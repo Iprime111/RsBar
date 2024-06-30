@@ -1,0 +1,62 @@
+.main-window {
+    border-top-right-radius:    15px;
+    border-bottom-right-radius: 15px;
+
+}
+
+.brightness-widget {
+}
+
+.brightness-widget-label {
+    color: #f9e2af;
+    font-size: 23px;
+
+}
+
+.brightness-widget-container {
+    margin-left:  3px;
+    margin-right: 3px;
+}
+
+.brightness-widget-button {
+}
+
+.volume-widget-button {
+    font-size: 23px;
+}
+
+.volume-widget-container {
+    margin-left:  3px;
+    margin-right: 3px;
+}
+
+
+.hyprland-workspaces-widget-container {
+    margin-left:  5px;
+    margin-right: 5px;
+    margin-bottom: 10px;
+}
+
+.hyprland-workspaces-widget-button {
+}
+
+.time-widget {
+    background: #313244;
+    color: #cba6f7;
+    
+    border-top-right-radius:    10px;
+    border-bottom-right-radius: 10px;
+
+    margin-top:   10px;
+    margin-right: 20px;
+
+    font-size:   30px;
+    font-family: "ProFontWindows Nerd Font Propo";
+    font-weight: bold;
+
+    padding: 5px;
+}
+
+button {
+    background-image: none;
+}
