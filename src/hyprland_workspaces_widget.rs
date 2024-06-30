@@ -1,6 +1,6 @@
 use std::{env, usize};
 
-use gtk4::prelude::{ButtonExt, GridExt, WidgetExt};
+use gtk4::prelude::{GridExt, WidgetExt, GestureExt};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::mpsc::{self, Sender}};
@@ -49,10 +49,9 @@ impl HyprlandWorkspacesWidget {
         Lazy::force(&HYPRCTL_SOCKET);
         Lazy::force(&EVENT_SOCKET);
 
-        let mut buttons: Vec<gtk4::Button> = Vec::new();
+        let mut buttons: Vec<gtk4::Label> = Vec::new();
         let container = gtk4::Grid::builder()
             .row_homogeneous(true)
-            .column_homogeneous(true)
             .row_spacing(6)
             .column_spacing(2)
             .build();
@@ -64,14 +63,14 @@ impl HyprlandWorkspacesWidget {
             for col in 0..cols {
                 let button_number = row * cols + col;
 
-                buttons.push(gtk4::Button::with_label(format!("{}", button_number + 1).as_str()));
+                buttons.push(gtk4::Label::new(Some(format!("{}", button_number + 1).as_str())));
 
                 buttons[button_number].add_css_class("hyprland-workspaces-widget-button");
                 buttons[button_number].add_css_class("hyprland-workspaces-widget");
 
-                buttons[button_number].set_width_request(10);
-                
-                buttons[button_number].connect_clicked(move |_| {
+                let gesture = gtk4::GestureClick::new();
+                gesture.connect_released(move |gesture, _, _, _| {
+                    gesture.set_state(gtk4::EventSequenceState::Claimed);
 
                     tokio_runtime().spawn(async move {
                         let arg = format!("dispatch workspace {}", button_number + 1);
@@ -79,6 +78,8 @@ impl HyprlandWorkspacesWidget {
                         let _ = make_hyprctl_request(&arg).await;
                     });
                 });
+
+                buttons[button_number].add_controller(gesture);
 
                 container.attach(&buttons[button_number], col as i32, row as i32,  1, 1);
             }
@@ -99,8 +100,8 @@ impl HyprlandWorkspacesWidget {
                     continue;
                 }
 
-                buttons[(workspace_id - 1) as usize].add_css_class("suggested-action");
-                buttons[widget.last_workspace - 1].remove_css_class("suggested-action");
+                buttons[(workspace_id - 1) as usize].add_css_class("hyprland-workspaces-widget-picked");
+                buttons[widget.last_workspace - 1].remove_css_class("hyprland-workspaces-widget-picked");
 
                 widget.last_workspace = workspace_id as usize;
             }

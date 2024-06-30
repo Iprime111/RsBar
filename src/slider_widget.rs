@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use gtk4::glib::object::ObjectExt;
+use gtk4::{glib::object::ObjectExt, prelude::GestureExt};
 use gtk4::glib::SignalHandlerId;
 use crate::bar_widget::BarWidget;
 use gtk4::prelude::{BoxExt, WidgetExt, RangeExt};
@@ -198,13 +198,17 @@ impl SliderWidget {
             click:     builder.click,
         };
 
+        let widget_clone_1 = widget.clone();
         let widget_clone_2 = widget.clone();
 
-        //TODO
-        //button.connect_clicked(move |_| {
-        //    (widget_clone_1.click)();
-        //    widget_clone_1.update_slider((widget_clone_1.get_value)());
-        //});
+        let gesture = gtk4::GestureClick::new();
+        gesture.connect_released(move |gesture, _, _, _| {
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+            (widget_clone_1.click)();
+            widget_clone_1.update_slider((widget_clone_1.get_value)());
+        });
+
+        label.add_controller(gesture);
 
         slider.connect_value_changed(move |scale| {
             widget_clone_2.update_button(scale.value() / widget_clone_2.max_value);
@@ -221,10 +225,8 @@ impl SliderWidget {
 
     fn update_button(&self, value: f64) {
         if value < EPS || self.icons.len() == 1 {
-            //self.button.set_label(&self.icons[0]);
             self.label.set_text(&self.icons[0]);
         } else {
-            //self.button.set_label(&self.icons[(value * (self.icons.len() - 1) as f64).ceil() as usize]);
             self.label.set_text(&self.icons[(value * (self.icons.len() - 1) as f64).ceil() as usize]);
         }
     }
