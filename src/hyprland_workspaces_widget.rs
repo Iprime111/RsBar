@@ -68,6 +68,8 @@ impl HyprlandWorkspacesWidget {
 
                 buttons[button_number].add_css_class("hyprland-workspaces-widget-button");
                 buttons[button_number].add_css_class("hyprland-workspaces-widget");
+
+                buttons[button_number].set_width_request(10);
                 
                 buttons[button_number].connect_clicked(move |_| {
 
