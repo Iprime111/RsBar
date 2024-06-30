@@ -39,9 +39,9 @@ fn main() {
 fn build_ui(app: &Application) {
     let screen_height = 1080; //TODO
 
-    let top_box    = gtk4::Box::new(gtk4::Orientation::Vertical, 15);
-    let middle_box = gtk4::Box::new(gtk4::Orientation::Vertical, 15);
-    let bottom_box = gtk4::Box::new(gtk4::Orientation::Vertical, 15);
+    let top_box    = gtk4::Box::new(gtk4::Orientation::Vertical, 5);
+    let middle_box = gtk4::Box::new(gtk4::Orientation::Vertical, 5);
+    let bottom_box = gtk4::Box::new(gtk4::Orientation::Vertical, 5);
 
     top_box.set_valign(gtk4::Align::Start);
     middle_box.set_valign(gtk4::Align::Center);
