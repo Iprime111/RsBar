@@ -3,15 +3,15 @@ use std::rc::Rc;
 use gtk4::glib::object::ObjectExt;
 use gtk4::glib::SignalHandlerId;
 use crate::bar_widget::BarWidget;
-use gtk4::prelude::{BoxExt, WidgetExt, RangeExt, ButtonExt};
+use gtk4::prelude::{BoxExt, WidgetExt, RangeExt};
 
 const EPS: f64 = 1e-5;
 
 #[derive(Clone)]
 pub struct SliderWidget {
-    pub slider:           gtk4::Scale,
-    //pub button:           gtk4::Button,
-    pub container:        gtk4::Box,
+    slider:           gtk4::Scale,
+    label:            gtk4::Label,
+    container:        gtk4::Box,
     value_changed_signal: Rc<SignalHandlerId>,
     max_value:            f64,
     icons:                Vec<String>,
@@ -27,7 +27,6 @@ pub struct SliderWidgetBuilder {
     set_value:           fn(f64),
     get_value:           fn() -> f64,
     click:               fn(),
-    button_class:        String,
     slider_class:        String,
     container_class:     String,
     label_class:         String,
@@ -48,7 +47,6 @@ impl Default for SliderWidgetBuilder {
             set_value:           dummy_set,
             get_value:           dummy_get,
             click:               dummy_click,
-            button_class:        "slider-widget-button".to_string(),
             slider_class:        "slider-widget-slider".to_string(),
             container_class:     "slider-widget-container".to_string(),
             label_class:         "slider-widget-label".to_string(),
@@ -95,11 +93,6 @@ impl SliderWidgetBuilder {
 
     pub fn click_callback(&mut self, callback: fn()) -> &mut Self {
         self.click = callback;
-        self
-    }
-
-    pub fn button_class(&mut self, button_class: &str) -> &mut Self {
-        self.button_class = button_class.to_string();
         self
     }
 
@@ -165,16 +158,13 @@ impl SliderWidget {
         revealer.set_child(Some(&slider));
         revealer.add_css_class(&builder.main_class);
 
-        //let button = gtk4::Button::with_label(&builder.icons[0]);
-        //button.add_css_class(&builder.button_class);
-        //button.add_css_class(&builder.main_class);
+        let label = gtk4::Label::new(Some(&builder.icons[0]));
 
-        //let label = button.child().unwrap();
-        //label.add_css_class(&builder.label_class);
-        //label.add_css_class(&builder.main_class);
-        //
-        //container.append(&revealer);
-        //container.append(&button);
+        label.add_css_class(&builder.label_class);
+        label.add_css_class(&builder.main_class);
+        
+        container.append(&revealer);
+        container.append(&label);
 
         let motion_controller = gtk4::EventControllerMotion::new();
         container.add_controller(motion_controller.clone());
@@ -199,7 +189,7 @@ impl SliderWidget {
 
         let widget = SliderWidget {
             slider: slider.clone(),
-            //button: button.clone(),
+            label: label.clone(),
             container,
             value_changed_signal: Rc::new(value_changed_signal),
             max_value: builder.max_value,
@@ -208,9 +198,9 @@ impl SliderWidget {
             click:     builder.click,
         };
 
-        let widget_clone_1 = widget.clone();
         let widget_clone_2 = widget.clone();
 
+        //TODO
         //button.connect_clicked(move |_| {
         //    (widget_clone_1.click)();
         //    widget_clone_1.update_slider((widget_clone_1.get_value)());
@@ -232,8 +222,10 @@ impl SliderWidget {
     fn update_button(&self, value: f64) {
         if value < EPS || self.icons.len() == 1 {
             //self.button.set_label(&self.icons[0]);
+            self.label.set_text(&self.icons[0]);
         } else {
             //self.button.set_label(&self.icons[(value * (self.icons.len() - 1) as f64).ceil() as usize]);
+            self.label.set_text(&self.icons[(value * (self.icons.len() - 1) as f64).ceil() as usize]);
         }
     }
 

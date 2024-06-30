@@ -7,7 +7,7 @@ use gtk4::prelude::BoxExt;
 
 const MAX_VOLUME:    f64 = 100.0;
 const SLIDER_HEIGHT: i32 = 100;
-const VOLUME_ICONS: [&str; 4] = ["", "󰕿", "󰖀", "󰕾"];
+const VOLUME_ICONS: [&str; 4] = ["󰖁", "󰕿", "󰖀", "󰕾"];
 
 #[derive(Clone)]
 pub struct VolumeWidget {
@@ -25,7 +25,6 @@ impl VolumeWidget {
                 .set_value_callback(set_system_volume)
                 .get_value_callback(get_system_volume)
                 .click_callback(toggle_mute)
-                .button_class("volume-widget-button")
                 .slider_class("volume-widget-slider")
                 .container_class("volume-widget-container")
                 .label_class("volume-widget-label")

@@ -82,10 +82,11 @@ fn build_ui(app: &Application) {
 
     time.bind_widget(&top_box);
 
-    volume.bind_widget(&middle_box);
-    brightness.bind_widget(&middle_box);//TODO Vec
+    //workspaces.bind_widget(&middle_box);
     
-    workspaces.bind_widget(&bottom_box);
+    volume.bind_widget(&bottom_box);
+    brightness.bind_widget(&bottom_box);//TODO Vec
+    
 
                                      
     let tick = move || {

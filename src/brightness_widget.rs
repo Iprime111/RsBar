@@ -24,7 +24,6 @@ impl BrightnessWidget {
                 .max_value(MAX_BRIGHTNESS)
                 .set_value_callback(set_system_brightness)
                 .get_value_callback(get_system_brightness)
-                .button_class("brightness-widget-button")
                 .slider_class("brightness-widget-slider")
                 .container_class("brightness-widget-container")
                 .label_class("brightness-widget-label")
