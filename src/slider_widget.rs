@@ -10,7 +10,7 @@ const EPS: f64 = 1e-5;
 #[derive(Clone)]
 pub struct SliderWidget {
     pub slider:           gtk4::Scale,
-    pub button:           gtk4::Button,
+    //pub button:           gtk4::Button,
     pub container:        gtk4::Box,
     value_changed_signal: Rc<SignalHandlerId>,
     max_value:            f64,
@@ -165,16 +165,16 @@ impl SliderWidget {
         revealer.set_child(Some(&slider));
         revealer.add_css_class(&builder.main_class);
 
-        let button = gtk4::Button::with_label(&builder.icons[0]);
-        button.add_css_class(&builder.button_class);
-        button.add_css_class(&builder.main_class);
+        //let button = gtk4::Button::with_label(&builder.icons[0]);
+        //button.add_css_class(&builder.button_class);
+        //button.add_css_class(&builder.main_class);
 
-        let label = button.child().unwrap();
-        label.add_css_class(&builder.label_class);
-        label.add_css_class(&builder.main_class);
-
-        container.append(&revealer);
-        container.append(&button);
+        //let label = button.child().unwrap();
+        //label.add_css_class(&builder.label_class);
+        //label.add_css_class(&builder.main_class);
+        //
+        //container.append(&revealer);
+        //container.append(&button);
 
         let motion_controller = gtk4::EventControllerMotion::new();
         container.add_controller(motion_controller.clone());
@@ -199,7 +199,7 @@ impl SliderWidget {
 
         let widget = SliderWidget {
             slider: slider.clone(),
-            button: button.clone(),
+            //button: button.clone(),
             container,
             value_changed_signal: Rc::new(value_changed_signal),
             max_value: builder.max_value,
@@ -211,10 +211,10 @@ impl SliderWidget {
         let widget_clone_1 = widget.clone();
         let widget_clone_2 = widget.clone();
 
-        button.connect_clicked(move |_| {
-            (widget_clone_1.click)();
-            widget_clone_1.update_slider((widget_clone_1.get_value)());
-        });
+        //button.connect_clicked(move |_| {
+        //    (widget_clone_1.click)();
+        //    widget_clone_1.update_slider((widget_clone_1.get_value)());
+        //});
 
         slider.connect_value_changed(move |scale| {
             widget_clone_2.update_button(scale.value() / widget_clone_2.max_value);
@@ -231,9 +231,9 @@ impl SliderWidget {
 
     fn update_button(&self, value: f64) {
         if value < EPS || self.icons.len() == 1 {
-            self.button.set_label(&self.icons[0]);
+            //self.button.set_label(&self.icons[0]);
         } else {
-            self.button.set_label(&self.icons[(value * (self.icons.len() - 1) as f64).ceil() as usize]);
+            //self.button.set_label(&self.icons[(value * (self.icons.len() - 1) as f64).ceil() as usize]);
         }
     }
 
