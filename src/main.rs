@@ -87,8 +87,6 @@ fn build_ui(app: &Application) {
     volume.bind_widget(&bottom_box);
     brightness.bind_widget(&bottom_box);//TODO Vec
     
-
-                                     
     let tick = move || {
         time.update_widget();
         volume.update_widget();

@@ -7,6 +7,10 @@ use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::mpsc::{sel
 
 use crate::{bar_widget::BarWidget, tokio_runtime::tokio_runtime};
 
+//--------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------[ Globals ]------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------
+
 static XDG_RUNTIME_DIR:             Lazy<String> = Lazy::new(|| env::var("XDG_RUNTIME_DIR").unwrap());
 static HYPRLAND_INSTANCE_SIGNATURE: Lazy<String> = Lazy::new(|| env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap());
 
@@ -16,10 +20,99 @@ static HYPRCTL_SOCKET: Lazy<String> = Lazy::new(||
 static EVENT_SOCKET: Lazy<String> = Lazy::new(||
     format!("{}/hypr/{}/.socket2.sock", xdg_runtime_dir(), hyprland_instance_signature()));
 
+//--------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------[ Widget ]------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------------
+
 pub struct HyprlandWorkspacesWidget {
     container:      gtk4::Grid,
     last_workspace: usize,
 }
+
+impl BarWidget for HyprlandWorkspacesWidget {
+    fn update_widget(&mut self) {}
+
+    fn bind_widget(&self, container: &impl gtk4::prelude::BoxExt) {
+        container.append(&self.container);
+    }
+}
+
+impl HyprlandWorkspacesWidget {
+    pub fn new(rows: usize, cols: usize) -> Self {
+        init_lazy_cells();
+
+        let mut buttons: Vec<gtk4::Label> = Vec::new();
+        let container = HyprlandWorkspacesWidget::create_container();
+        
+        for row in 0..rows {
+            for col in 0..cols {
+                HyprlandWorkspacesWidget::create_button(&container, &mut buttons, row, col, cols);
+            }
+        }
+
+        let (tx, mut rx) = mpsc::channel::<i32>(32);
+
+        tokio_runtime().spawn(hyprland_event_listener_async(tx));
+
+        let mut widget = Self { container, last_workspace: 1 };
+
+        gtk4::glib::spawn_future_local(async move {
+            while let Some(workspace_id) = rx.recv().await {
+                if workspace_id <= 0 || workspace_id as usize > buttons.len() {
+                    continue;
+                }
+
+                buttons[(workspace_id - 1) as usize].add_css_class("hyprland-workspaces-widget-picked");
+                buttons[widget.last_workspace - 1].remove_css_class("hyprland-workspaces-widget-picked");
+
+                widget.last_workspace = workspace_id as usize;
+            }
+        });
+
+        widget
+    }
+
+    fn create_button(container: &gtk4::Grid, buttons: &mut Vec<gtk4::Label>, row: usize, col: usize, cols_count: usize) {
+        let button_number = row * cols_count + col;
+    
+        buttons.push(gtk4::Label::new(Some(format!("{}", button_number + 1).as_str())));
+    
+        buttons[button_number].add_css_class("hyprland-workspaces-widget-button");
+        buttons[button_number].add_css_class("hyprland-workspaces-widget");
+    
+        let gesture = gtk4::GestureClick::new();
+        gesture.connect_released(move |gesture, _, _, _| {
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+    
+            tokio_runtime().spawn(async move {
+                let arg = format!("dispatch workspace {}", button_number + 1);
+    
+                let _ = make_hyprctl_request(&arg).await;
+            });
+        });
+    
+        buttons[button_number].add_controller(gesture);
+    
+        container.attach(&buttons[button_number], col as i32, row as i32,  1, 1);
+    }
+
+    fn create_container() -> gtk4::Grid{
+        let container = gtk4::Grid::builder()
+            .row_homogeneous(true)
+            .row_spacing(6)
+            .column_spacing(2)
+            .build();
+
+        container.add_css_class("hyprland-workspaces-widget-container");
+        container.add_css_class("hyprland-workspaces-widget");
+
+        container
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------[ Hyprland IPC ]------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
@@ -41,84 +134,6 @@ pub struct Workspace {
     pub last_window_title: String,
 }
 
-impl HyprlandWorkspacesWidget {
-    pub fn new(rows: usize, cols: usize) -> Self {
-        Lazy::force(&XDG_RUNTIME_DIR);
-        Lazy::force(&HYPRLAND_INSTANCE_SIGNATURE);
-
-        Lazy::force(&HYPRCTL_SOCKET);
-        Lazy::force(&EVENT_SOCKET);
-
-        let mut buttons: Vec<gtk4::Label> = Vec::new();
-        let container = gtk4::Grid::builder()
-            .row_homogeneous(true)
-            .row_spacing(6)
-            .column_spacing(2)
-            .build();
-
-        container.add_css_class("hyprland-workspaces-widget-container");
-        container.add_css_class("hyprland-workspaces-widget");
-
-        for row in 0..rows {
-            for col in 0..cols {
-                let button_number = row * cols + col;
-
-                buttons.push(gtk4::Label::new(Some(format!("{}", button_number + 1).as_str())));
-
-                buttons[button_number].add_css_class("hyprland-workspaces-widget-button");
-                buttons[button_number].add_css_class("hyprland-workspaces-widget");
-
-                let gesture = gtk4::GestureClick::new();
-                gesture.connect_released(move |gesture, _, _, _| {
-                    gesture.set_state(gtk4::EventSequenceState::Claimed);
-
-                    tokio_runtime().spawn(async move {
-                        let arg = format!("dispatch workspace {}", button_number + 1);
-
-                        let _ = make_hyprctl_request(&arg).await;
-                    });
-                });
-
-                buttons[button_number].add_controller(gesture);
-
-                container.attach(&buttons[button_number], col as i32, row as i32,  1, 1);
-            }
-        }
-
-        let (tx, mut rx) = mpsc::channel::<i32>(32);
-
-        tokio_runtime().spawn(hyprland_event_listener_async(tx));
-
-        let mut widget = Self {
-            container,
-            last_workspace: 1,
-        };
-
-        gtk4::glib::spawn_future_local(async move {
-            while let Some(workspace_id) = rx.recv().await {
-                if workspace_id <= 0 || workspace_id as usize > buttons.len() {
-                    continue;
-                }
-
-                buttons[(workspace_id - 1) as usize].add_css_class("hyprland-workspaces-widget-picked");
-                buttons[widget.last_workspace - 1].remove_css_class("hyprland-workspaces-widget-picked");
-
-                widget.last_workspace = workspace_id as usize;
-            }
-        });
-
-        widget
-    }
-}
-
-impl BarWidget for HyprlandWorkspacesWidget {
-    fn update_widget(&mut self) {}
-
-    fn bind_widget(&self, container: &impl gtk4::prelude::BoxExt) {
-        container.append(&self.container);
-    }
-}
-
 async fn hyprland_event_listener_async(tx: Sender<i32>) -> tokio::io::Result<()> {
     let mut stream = UnixStream::connect(event_socket()).await?;
     let mut buffer = [0; 4096];
@@ -126,9 +141,9 @@ async fn hyprland_event_listener_async(tx: Sender<i32>) -> tokio::io::Result<()>
     let workspace = get_active_workspace_async().await?;
     tx.send(workspace).await.unwrap();
 
-    
     loop {
         let bytes_count = stream.read(&mut buffer).await?;
+        
         if bytes_count == 0 {
             break;
         }
@@ -145,7 +160,6 @@ async fn hyprland_event_listener_async(tx: Sender<i32>) -> tokio::io::Result<()>
                 break;
             }
         }
-    
     }
 
     Ok(())
@@ -171,6 +185,18 @@ async fn make_hyprctl_request(request: &String) -> tokio::io::Result<String> {
     let response = String::from_utf8(buf[..bytes_count].to_vec()).unwrap();
 
     Ok(response)
+}
+
+//------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------[ Lazy cells ]-------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------
+
+fn init_lazy_cells() {
+    Lazy::force(&XDG_RUNTIME_DIR);
+    Lazy::force(&HYPRLAND_INSTANCE_SIGNATURE);
+
+    Lazy::force(&HYPRCTL_SOCKET);
+    Lazy::force(&EVENT_SOCKET);
 }
 
 macro_rules! get_lazy {

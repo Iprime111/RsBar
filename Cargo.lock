@@ -840,6 +840,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsbar"
+version = "1.0.1"
+dependencies = [
+ "async-channel",
+ "chrono",
+ "gtk4",
+ "gtk4-layer-shell",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1142,20 +1156,6 @@ name = "wasm-bindgen-shared"
 version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
-
-[[package]]
-name = "widget"
-version = "0.1.0"
-dependencies = [
- "async-channel",
- "chrono",
- "gtk4",
- "gtk4-layer-shell",
- "once_cell",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "windows-core"

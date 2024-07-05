@@ -126,25 +126,9 @@ impl SliderWidget {
         Self::from_builder(&SliderWidgetBuilder::default())
     }
 
+    //TODO fix this BIG shit below
     fn from_builder(builder: &SliderWidgetBuilder) -> Self {
-        let scale_adjustment = gtk4::Adjustment::new(
-            0.0,               // Initial value
-            0.0,               // Lower bound
-            builder.max_value, // Upper bound
-            5.0,               // Step increment
-            0.0,               // Page increment
-            0.0,               // Page size
-        );
-
-        let slider = gtk4::Scale::builder()
-            .adjustment(&scale_adjustment)
-            .orientation(gtk4::Orientation::Vertical)
-            .height_request(builder.slider_height)
-            .build();
-
-        slider.add_css_class(&builder.slider_class);
-        slider.add_css_class(&builder.main_class);
-        slider.set_inverted(true);
+        let slider = SliderWidget::create_slider(&builder);
 
         let container = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
         container.add_css_class(&builder.container_class);
@@ -215,6 +199,29 @@ impl SliderWidget {
         });
 
         widget
+    }
+
+    fn create_slider(builder: &SliderWidgetBuilder) -> gtk4::Scale {
+        let scale_adjustment = gtk4::Adjustment::new(
+            0.0,               // Initial value
+            0.0,               // Lower bound
+            builder.max_value, // Upper bound
+            5.0,               // Step increment
+            0.0,               // Page increment
+            0.0,               // Page size
+        );
+
+        let slider = gtk4::Scale::builder()
+            .adjustment(&scale_adjustment)
+            .orientation(gtk4::Orientation::Vertical)
+            .height_request(builder.slider_height)
+            .build();
+
+        slider.add_css_class(&builder.slider_class);
+        slider.add_css_class(&builder.main_class);
+        slider.set_inverted(true);
+
+        slider
     }
 
     fn update_slider(&self, value: f64) {
