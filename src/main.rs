@@ -14,7 +14,7 @@ use gtk4::{prelude::*, Application, ApplicationWindow, glib};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
 
-const APP_ID: &str = "org.lBar.test";
+const APP_ID: &str = "org.rsbar.bar";
 
 fn main() {
 
