@@ -841,7 +841,7 @@ dependencies = [
 
 [[package]]
 name = "rsbar"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "async-channel",
  "chrono",
@@ -852,6 +852,10 @@ dependencies = [
  "serde_json",
  "tokio",
 ]
+
+[[package]]
+name = "rsbar-daemon"
+version = "0.0.1"
 
 [[package]]
 name = "rustc-demangle"

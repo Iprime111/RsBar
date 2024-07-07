@@ -14,30 +14,41 @@ use gtk4::{prelude::*, Application, ApplicationWindow, glib};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
 
-const APP_ID: &str = "org.rsbar.bar";
-
+//TODO rewrite this shit to use a client-server architecture
 fn main() {
+    let app_id = format!("org.rsbar.bar");
 
-    let app = Application::builder().application_id(APP_ID).build();
+    let app = Application::builder().application_id(app_id).build();
 
-     app.connect_startup(|app| {
+     app.connect_startup(move |app| {
+        let display = gtk4::gdk::Display::default().expect("Could not connect to a display.");
+
         let provider = gtk4::CssProvider::new();
-
+    
         provider.load_from_string(include_str!("style.css"));
         gtk4::style_context_add_provider_for_display(
-            &gtk4::gdk::Display::default().expect("Could not connect to a display."),
+            &display,
             &provider,
             gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
-
+    
         build_ui(app);
     });
-
+    
     app.run();
 }
 
 fn build_ui(app: &Application) {
-    let screen_height = 1080; //TODO
+    let display = gtk4::gdk::Display::default().expect("Could not connect to a display.");
+
+    for monitor_id in 0..display.monitors().n_items() {
+        build_window(app, &display, monitor_id);
+    }
+}
+
+fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_id: u32) {
+    let monitor       = display.monitors().item(monitor_id).unwrap().downcast::<gtk4::gdk::Monitor>().unwrap();
+    let screen_height = monitor.geometry().height();
 
     let top_box    = gtk4::Box::new(gtk4::Orientation::Vertical, 5);
     let middle_box = gtk4::Box::new(gtk4::Orientation::Vertical, 5);
@@ -71,10 +82,10 @@ fn build_ui(app: &Application) {
         .default_height(screen_height)
         .child(&grid)
         .build();
-
+    
     window.add_css_class("main-window");
 
-    setup_layer_shell(&window);
+    setup_layer_shell(&window, &monitor);
 
     app.connect_activate(move |_| {
         window.present();
@@ -96,9 +107,10 @@ fn build_ui(app: &Application) {
     };
 
     glib::timeout_add_seconds_local(1, tick);
+
 }
 
-fn setup_layer_shell(window: &ApplicationWindow) {
+fn setup_layer_shell(window: &ApplicationWindow, monitor: &gtk4::gdk::Monitor) {
     window.init_layer_shell();
     window.set_layer(Layer::Top);
     window.auto_exclusive_zone_enable();
@@ -113,4 +125,6 @@ fn setup_layer_shell(window: &ApplicationWindow) {
      for (anchor, state) in anchors {
         window.set_anchor(anchor, state);
     }
+
+    window.set_monitor(monitor);
 }
