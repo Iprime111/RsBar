@@ -14,7 +14,7 @@ use gtk4::{prelude::*, Application, ApplicationWindow, glib};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
 
-//TODO rewrite this shit to use a client-server architecture
+// TODO rewrite this shit to use a client-server architecture
 fn main() {
     let app_id = format!("org.rsbar.bar");
 
