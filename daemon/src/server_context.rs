@@ -1,91 +1,136 @@
-use rayon::{iter::ParallelIterator, prelude::IntoParallelRefMutIterator};
+use std::{collections::HashMap, sync::Arc};
 
-const MIN_REQUEST_PARTS:   usize = 3;
-const QUERY_REQUEST_PARTS: usize = 3;
-const CALL_REQUEST_PARTS:  usize = 4;
+use async_trait::async_trait;
+use tokio::sync::{mpsc, Mutex};
 
-const QUERY_SPECIFIER: &str = "q";
-const CALL_SPECIFIER:  &str = "c";
+const EVENT_REQUEST_PARTS: usize = 2;
+const CALL_REQUEST_PARTS:  usize = 3;
 
-
+#[async_trait]
 pub trait RsbarContextContent {
-    fn init(&mut self);
-    fn update(&mut self);
+    async fn init(&mut self, event_handler: Arc<Mutex<EventHandler>>) -> tokio::io::Result<()>;
+    async fn update(&mut self) -> tokio::io::Result<()>;
 
-    // Query args format:     "q/<context name>/<parameter name>"
-    // Query responce format: "<parameter content>" or None in case of error
-    fn query(&self, parameter: &str) -> Option<String>;
+    // Event socket:
+    // Event subscription format: "<context name>/<parameter name>"
+    // Event response format:     "<parameter content>" or None in case of error
 
-    // Call args format:   "c/<context name>/<procedure name>/<arg string>"
+    // Method socket:
+    // Call args format:   "<context name>/<procedure name>/<arg string>"
     // Call result format: "<return value>" or None in case of error
     fn call(&mut self, procedure: &str, args: &str) -> Option<String>;
 }
 
 pub struct RsbarContext {
-    name:    String,
-    context: Box<dyn RsbarContextContent + Send>,
+    context: Box<dyn RsbarContextContent + Send + Sync>,
 }
 
 impl RsbarContext {
-    pub fn new(name: &str, context: Box<dyn RsbarContextContent + Send>) -> Self {
+    pub fn new(context: Box<dyn RsbarContextContent + Send + Sync>) -> Self {
         RsbarContext {
-            name: String::from(name),
             context,
         }
     }
 }
 
+pub struct EventHandler {
+    events: HashMap<String, Vec<mpsc::Sender<String>>>,
+} 
+
+impl EventHandler {
+    pub fn new() -> Self{
+        return EventHandler {
+            events: HashMap::new(),
+        }
+    }
+
+    pub fn add_event(&mut self, name: &str, client: mpsc::Sender<String>) {
+        self.events.entry(name.to_string()).or_insert(Vec::new()).push(client);
+    }
+
+    pub async fn trigger_event(&self, name: &str, data: &str) {
+        let clients = self.events.get(name);
+
+        if clients.is_none() {
+            return;
+        }
+
+        for client in clients.unwrap() {
+
+            let response = format!("{} {}", name, data);
+            let _ = client.send(response).await;
+        }
+    }
+}
+
 pub struct ServerContext {
-    contexts: Vec<RsbarContext>,
+    contexts:      HashMap<String, RsbarContext>,
+    event_handler: Arc<Mutex<EventHandler>>,
 }
 
 impl ServerContext {
-    pub fn new() -> ServerContext {
-        ServerContext { contexts: Vec::new(), }
+    pub fn new() -> Self {
+        ServerContext { 
+            contexts:      HashMap::new(),
+            event_handler: Arc::new(Mutex::new(EventHandler::new())),
+        }
     }
 
-    pub fn new_request(&mut self, request: &str) -> Option<String> {
-        let request_parts: Vec<&str> = request.split('/').collect();
-        let parts_count = request_parts.len();
-
-        if parts_count < MIN_REQUEST_PARTS {
-            return None;
+    pub async fn init(&mut self) -> tokio::io::Result<()>{
+        for (_context_name, context) in self.contexts.iter_mut() {
+            context.context.init(self.event_handler.clone()).await?;
         }
+
+        Ok(())
+    }
+
+    pub fn new_call(&mut self, request: &str) -> Option<String> {
+        let request_parts = split_request(request, CALL_REQUEST_PARTS)?;
+
+        let context = self.contexts.get_mut(request_parts[0])?;
+
+        (*context).context.call(request_parts[1], request_parts[2])
+    }
+
+    // TODO error handling (err message)
+    pub async fn new_event_client(&mut self, request: &str, stream: mpsc::Sender<String>) -> Option<()> {
+        let request_parts = split_request(request, EVENT_REQUEST_PARTS)?;
         
-        for context in self.contexts.iter_mut() {
-            if (*context).name == request_parts[1] {
-                
-                return match request_parts[0] {
-                    QUERY_SPECIFIER => {
-                        if parts_count != QUERY_REQUEST_PARTS {
-                            return None;
-                        }
-
-                        (*context).context.query(request_parts[2])
-                    },
-                    CALL_SPECIFIER => {
-                        if parts_count != CALL_REQUEST_PARTS {
-                            return None;
-                        }
-
-                        (*context).context.call(request_parts[2], request_parts[3])
-                    },
-                    _ => None,
-                }
-            }
+        if !self.contexts.contains_key(request_parts[0]) {
+            println!("Invalid context name: {}", request_parts[0]);
+            return None;    
         }
+    
+        self.event_handler.lock().await.add_event(request, stream);
 
+        Some(())
+    }
+
+    pub fn add_context(&mut self, (context_name, context): (String, RsbarContext)) {
+        self.contexts.insert(context_name, context);
+    }
+
+    pub async fn update(&mut self) -> tokio::io::Result<()> {
+        for (_context_name, context) in &mut self.contexts {
+            //  TODO figure out how to run these updates concurrently           
+            context.context.update().await?;
+        };
+
+        Ok(())
+    }
+}
+
+fn split_request(request: &str, right_parts_count: usize) -> Option<Vec<&str>> {
+    let request_trimmed = request.trim();
+    
+    println!("Request: \"{}\"", &request_trimmed);
+    
+    let request_parts: Vec<&str> = request_trimmed.split('/').collect();
+    let parts_count = request_parts.len();
+
+    if parts_count != right_parts_count {
         return None;
     }
 
-    pub fn add_context(&mut self, context: RsbarContext) {
-
-        self.contexts.push(context);
-    }
-
-    pub fn update(&mut self) {
-        self.contexts.par_iter_mut().for_each(|context| {
-            context.context.update();
-        })
-    }
+    Some(request_parts)
 }

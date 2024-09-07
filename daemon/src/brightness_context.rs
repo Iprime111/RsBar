@@ -1,17 +1,29 @@
-use std::process::Command;
+use std::{process::Command, sync::Arc};
 
-use crate::server_context::{RsbarContext, RsbarContextContent};
+use async_trait::async_trait;
+use tokio::sync::Mutex;
+
+use crate::server_context::{EventHandler, RsbarContext, RsbarContextContent};
+
+const MAX_BRIGHTNESS: f64 = 100.0;
+const MIN_BRIGHTNESS: f64 = 0.0;
 
 pub struct BrightnessContext {
-    brightness: f64,
+    brightness:    f64,
+    event_handler: Option<Arc<Mutex<EventHandler>>>,
 }
 
+#[async_trait]
 impl RsbarContextContent for BrightnessContext {
-    fn init(&mut self) {
-        todo!()
+    async fn init(&mut self, event_handler: Arc<Mutex<EventHandler>>) -> tokio::io::Result<()> {
+        self.event_handler = Some(event_handler);
+
+        self.update().await?;
+
+        Ok(())
     }
 
-    fn update(&mut self) {
+    async fn update(&mut self) -> tokio::io::Result<()> {
         let output = Command::new("brightnessctl").arg("-m").output().unwrap();
 
         let result_string = String::from_utf8_lossy(&output.stdout);
@@ -21,16 +33,15 @@ impl RsbarContextContent for BrightnessContext {
         let brightness_value = brightness_value_chars.as_str().parse::<f64>();
         
         match brightness_value {
-            Ok(value) => self.brightness = value / 100.0,
+            Ok(value) => self.brightness = value,
             Err(_)    => self.brightness = 0.0,
         };
-    }
 
-    fn query(&self, parameter: &str) -> Option<String> {
-        match parameter {
-            "brightness" => Some(self.brightness.to_string()),
-            _ => None,
-        }
+        let events = self.event_handler.as_mut().unwrap().lock().await;
+        
+        events.trigger_event("brightness/brightness", &self.brightness.to_string()).await;
+
+        Ok(())
     }
 
     fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
@@ -42,15 +53,31 @@ impl RsbarContextContent for BrightnessContext {
 }
 
 impl BrightnessContext {
-    fn new() -> RsbarContext {
+    pub fn new() -> (String, RsbarContext) {
         let new_context = Box::new(BrightnessContext {
-            brightness: 0.0,
+            brightness:    0.0,
+            event_handler: None,
         });
 
-        RsbarContext::new("brightness", new_context)
+        ("brightness".to_string(), RsbarContext::new(new_context))
     }
 
-    fn set_brightness(&self, args: &str) -> Option<String> {
-        None
+    fn set_brightness(&mut self, args: &str) -> Option<String> {
+        let parse_result = args.parse::<f64>();
+
+        if !parse_result.is_ok() {
+            return None;
+        }
+
+        let value = parse_result.unwrap();
+
+        if value < MIN_BRIGHTNESS || value > MAX_BRIGHTNESS {
+            return None;
+        }
+
+        self.brightness = value;
+
+        let _ = Command::new("brightnessctl").arg("-q").arg("set").arg(format!("{}%", value * 100.0)).status();
+        Some(String::from(args))
     }
 }
