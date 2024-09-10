@@ -54,7 +54,7 @@ impl RsbarContextContent for VolumeContext {
         Ok(())
     }
 
-    fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
+    async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
         match procedure {
             "setVolume"   => self.set_volume(args),
             "toggleMuted" => self.toggle_muted(args),

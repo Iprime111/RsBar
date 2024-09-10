@@ -5,22 +5,26 @@ mod slider_widget;
 mod brightness_widget;
 mod hyprland_workspaces_widget;
 mod tokio_runtime;
+mod unix_sockets;
 
 use bar_widget::BarWidget;
 use brightness_widget::BrightnessWidget;
+use unix_sockets::setup_unix_sockets;
 use volume_widget::VolumeWidget;
 use hyprland_workspaces_widget::HyprlandWorkspacesWidget;
-use gtk4::{prelude::*, Application, ApplicationWindow, glib};
+use gtk4::{prelude::*, Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
 
 // TODO rewrite this shit to use a client-server architecture
-fn main() {
+#[tokio::main]
+async fn main() {
+    let channels_data = setup_unix_sockets();
+
     let app_id = format!("org.rsbar.bar");
+    let app    = Application::builder().application_id(app_id).build();
 
-    let app = Application::builder().application_id(app_id).build();
-
-     app.connect_startup(move |app| {
+    app.connect_startup(move |app| {
         let display = gtk4::gdk::Display::default().expect("Could not connect to a display.");
 
         let provider = gtk4::CssProvider::new();
@@ -92,23 +96,11 @@ fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_id: u32
     });
 
     time.bind_widget(&top_box);
-
     workspaces.bind_widget(&middle_box);
-    
     volume.bind_widget(&bottom_box);
     brightness.bind_widget(&bottom_box);//TODO Vec
-    
-    let tick = move || {
-        time.update_widget();
-        volume.update_widget();
-        brightness.update_widget();//TODO vec
-
-        glib::ControlFlow::Continue
-    };
-
-    glib::timeout_add_seconds_local(1, tick);
-
 }
+
 
 fn setup_layer_shell(window: &ApplicationWindow, monitor: &gtk4::gdk::Monitor) {
     window.init_layer_shell();

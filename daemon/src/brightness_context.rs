@@ -44,7 +44,7 @@ impl RsbarContextContent for BrightnessContext {
         Ok(())
     }
 
-    fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
+    async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
         match procedure {
             "setBrightness" => self.set_brightness(args),
             _ => None,

@@ -18,7 +18,7 @@ pub trait RsbarContextContent {
     // Method socket:
     // Call args format:   "<context name>/<procedure name>/<arg string>"
     // Call result format: "<return value>" or None in case of error
-    fn call(&mut self, procedure: &str, args: &str) -> Option<String>;
+    async fn call(&mut self, procedure: &str, args: &str) -> Option<String>;
 }
 
 pub struct RsbarContext {
@@ -84,12 +84,12 @@ impl ServerContext {
         Ok(())
     }
 
-    pub fn new_call(&mut self, request: &str) -> Option<String> {
+    pub async fn new_call(&mut self, request: &str) -> Option<String> {
         let request_parts = split_request(request, CALL_REQUEST_PARTS)?;
 
         let context = self.contexts.get_mut(request_parts[0])?;
 
-        (*context).context.call(request_parts[1], request_parts[2])
+        (*context).context.call(request_parts[1], request_parts[2]).await
     }
 
     // TODO error handling (err message)

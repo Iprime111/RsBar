@@ -4,7 +4,7 @@ use std::{env, sync::Arc};
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::{mpsc, Mutex}};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::Mutex};
 
 use crate::server_context::{EventHandler, RsbarContext, RsbarContextContent};
 
@@ -26,6 +26,7 @@ static EVENT_SOCKET: Lazy<String> = Lazy::new(||
 //--------------------------------------------------------------------------------------------------------------------------------
 
 pub struct HyprlandContext {
+    current_workspace: Arc<Mutex<i32>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -54,7 +55,7 @@ impl RsbarContextContent for HyprlandContext {
 
         init_lazy_cells();
 
-        tokio::spawn(Self::hyprland_event_listener_async(event_handler));
+        tokio::spawn(Self::hyprland_event_listener_async(event_handler, self.current_workspace.clone()));
 
         Ok(())
     }
@@ -63,31 +64,36 @@ impl RsbarContextContent for HyprlandContext {
         Ok(())
     }
 
-    fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
+    async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
         // TODO change workspace number
         match procedure {
             "setWorkspace" => { 
-                Self::make_hyprctl_request(&format!("dispatch workspace {}", args)); 
+                let _ = Self::make_hyprctl_request(&format!("dispatch workspace {}", args)).await; 
+                return Some(args.to_string());
+            },
+            "workspace" => {
+                return self.current_workspace.lock().await;
             },
             _ => return None,
         };
 
-        Some(args.to_string())
     }
 }
 
 impl HyprlandContext {
     pub fn new() -> (String, RsbarContext) {
-        let new_context = Box::new(HyprlandContext {});
+        let new_context = Box::new(HyprlandContext { current_workspace: Arc::new(Mutex::new(-1)) });
 
         ("hyprland".to_string(), RsbarContext::new(new_context))
     }
 
-    async fn hyprland_event_listener_async(event_handler: Arc<Mutex<EventHandler>>) -> tokio::io::Result<()> {
+    async fn hyprland_event_listener_async(event_handler: Arc<Mutex<EventHandler>>, current_workspace: Arc<Mutex<i32>>) -> tokio::io::Result<()> {
         let mut stream = UnixStream::connect(event_socket()).await?;
-        let mut buffer = [0; 4096];
+        let mut buffer = [0; 4096]; // TODO remove magic number
         
         let workspace = Self::get_active_workspace_async().await?;
+
+        *current_workspace.lock().await = workspace;
         event_handler.lock().await.trigger_event("hyprland/workspace", &workspace.to_string()).await;
         
         loop {
@@ -105,8 +111,9 @@ impl HyprlandContext {
         
                     // TODO function
                     let workspace = Self::get_active_workspace_async().await?;
+                    *current_workspace.lock().await = workspace;
                     event_handler.lock().await.trigger_event("hyprland/workspace", &workspace.to_string()).await;
-
+                    
                     break;
                 }
             }

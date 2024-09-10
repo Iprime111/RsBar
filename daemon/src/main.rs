@@ -2,6 +2,7 @@ mod server_context;
 mod volume_context;
 mod brightness_context;
 mod hyprland_context;
+mod time_context;
 
 use brightness_context::BrightnessContext;
 use hyprland_context::HyprlandContext;
@@ -71,7 +72,7 @@ async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext
     while let Some(request) = lines.next_line().await? {
         println!("Got new call request: {}", request);
         
-        let response = context.lock().await.new_call(&request);
+        let response = context.lock().await.new_call(&request).await;
         
         if response.is_none() {
             println!("Invalid request!");
