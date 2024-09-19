@@ -1,24 +1,12 @@
-use std::{env, usize};
+use std::{cell::RefCell, rc::Rc, usize};
 
-use gtk4::prelude::{GridExt, WidgetExt, GestureExt};
-use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::mpsc::{self, Sender}};
+use gtk4::{glib::MainContext, prelude::{BoxExt, GestureExt, GridExt, WidgetExt}};
 
-use crate::{bar_widget::BarWidget, tokio_runtime::tokio_runtime};
+use crate::{bar_widget::BarWidget, unix_sockets::ChannelsData};
 
-//--------------------------------------------------------------------------------------------------------------------------------
-//---------------------------------------------------------[ Globals ]------------------------------------------------------------
-//--------------------------------------------------------------------------------------------------------------------------------
-
-static XDG_RUNTIME_DIR:             Lazy<String> = Lazy::new(|| env::var("XDG_RUNTIME_DIR").unwrap());
-static HYPRLAND_INSTANCE_SIGNATURE: Lazy<String> = Lazy::new(|| env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap());
-
-static HYPRCTL_SOCKET: Lazy<String> = Lazy::new(|| 
-    format!("{}/hypr/{}/.socket.sock", xdg_runtime_dir(), hyprland_instance_signature()));
-
-static EVENT_SOCKET: Lazy<String> = Lazy::new(||
-    format!("{}/hypr/{}/.socket2.sock", xdg_runtime_dir(), hyprland_instance_signature()));
+const EVENTS_LIST: &[&str] = &[
+    "hyprland/workspace",
+];
 
 //--------------------------------------------------------------------------------------------------------------------------------
 //----------------------------------------------------------[ Widget ]------------------------------------------------------------
@@ -26,21 +14,78 @@ static EVENT_SOCKET: Lazy<String> = Lazy::new(||
 
 pub struct HyprlandWorkspacesWidget {
     container:      gtk4::Grid,
-    last_workspace: usize,
+    buttons:        Rc<Vec<gtk4::Label>>,
+    last_workspace: Rc<RefCell<usize>>,
 }
 
 impl BarWidget for HyprlandWorkspacesWidget {
-    fn update_widget(&mut self) {}
-
-    fn bind_widget(&self, container: &impl gtk4::prelude::BoxExt) {
+    fn bind_widget(&self, container: &gtk4::Box) {
         container.append(&self.container);
     }
+
+    fn events_list(&self) -> &'static[&'static str] {
+        EVENTS_LIST
+    }
+
+    fn bind_channels(&self, mut channels_data: ChannelsData) {
+        for button_index in 0..self.buttons.len() {
+            let gesture = gtk4::GestureClick::new();
+
+            let call_tx = channels_data.call_tx.clone();
+
+            gesture.connect_released(move |gesture, _, _, _| {
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
+    
+                let _ = call_tx.send(format!("hyprland/setWorkspace/{}", button_index + 1));
+            });
+    
+            self.buttons[button_index].add_controller(gesture);
+        }
+
+        let buttons        = self.buttons.clone();
+        let last_workspace = self.last_workspace.clone();
+
+        
+
+        MainContext::default().spawn_local(async move {
+            while let Ok(event) = channels_data.event_rx.recv().await {
+                if event.name != EVENTS_LIST[0] {
+                    continue;
+                }
+
+                let workspace_id = get_workspace_id(&event.value, buttons.len());
+                buttons[*last_workspace.borrow() - 1].remove_css_class("hyprland-workspaces-widget-picked");
+
+                if workspace_id.is_none() {
+                    continue;
+                }
+
+                buttons[(workspace_id.unwrap() - 1) as usize].add_css_class("hyprland-workspaces-widget-picked");
+
+                *last_workspace.borrow_mut() = workspace_id.unwrap();
+            }
+        });
+    }
+}
+
+fn get_workspace_id(value: &str, max_id: usize) -> Option<usize> {
+    let workspace_id = value.parse::<i32>();
+
+    if workspace_id.is_err() {
+        return None;
+    }
+
+    let workspace_id_unwrapped = workspace_id.unwrap();
+
+    if workspace_id_unwrapped < 1 || workspace_id_unwrapped as usize > max_id {
+        return None;
+    }
+
+    Some(workspace_id_unwrapped as usize)
 }
 
 impl HyprlandWorkspacesWidget {
     pub fn new(rows: usize, cols: usize) -> Self {
-        init_lazy_cells();
-
         let mut buttons: Vec<gtk4::Label> = Vec::new();
         let container = HyprlandWorkspacesWidget::create_container();
         
@@ -50,24 +95,11 @@ impl HyprlandWorkspacesWidget {
             }
         }
 
-        let (tx, mut rx) = mpsc::channel::<i32>(32);
-
-        tokio_runtime().spawn(hyprland_event_listener_async(tx));
-
-        let mut widget = Self { container, last_workspace: 1 };
-
-        gtk4::glib::spawn_future_local(async move {
-            while let Some(workspace_id) = rx.recv().await {
-                if workspace_id <= 0 || workspace_id as usize > buttons.len() {
-                    continue;
-                }
-
-                buttons[(workspace_id - 1) as usize].add_css_class("hyprland-workspaces-widget-picked");
-                buttons[widget.last_workspace - 1].remove_css_class("hyprland-workspaces-widget-picked");
-
-                widget.last_workspace = workspace_id as usize;
-            }
-        });
+        let widget = Self { 
+            container,
+            buttons:        Rc::new(buttons),
+            last_workspace: Rc::new(RefCell::new(1)) 
+        };
 
         widget
     }
@@ -79,19 +111,6 @@ impl HyprlandWorkspacesWidget {
     
         buttons[button_number].add_css_class("hyprland-workspaces-widget-button");
         buttons[button_number].add_css_class("hyprland-workspaces-widget");
-    
-        let gesture = gtk4::GestureClick::new();
-        gesture.connect_released(move |gesture, _, _, _| {
-            gesture.set_state(gtk4::EventSequenceState::Claimed);
-    
-            tokio_runtime().spawn(async move {
-                let arg = format!("dispatch workspace {}", button_number + 1);
-    
-                let _ = make_hyprctl_request(&arg).await;
-            });
-        });
-    
-        buttons[button_number].add_controller(gesture);
     
         container.attach(&buttons[button_number], col as i32, row as i32,  1, 1);
     }
@@ -109,106 +128,3 @@ impl HyprlandWorkspacesWidget {
         container
     }
 }
-
-//------------------------------------------------------------------------------------------------------------------------------
-//--------------------------------------------------[ Hyprland IPC ]------------------------------------------------------------
-//------------------------------------------------------------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Workspace {
-    pub id:                i32,
-    pub name:              String,
-    pub monitor:           String,
-
-    #[serde(rename = "monitorID")]
-    pub monitor_id:        i128,
-
-    pub windows:           u16,
-    #[serde(rename = "hasfullscreen")]
-    pub fullscreen:        bool,
-    
-    #[serde(rename = "lastwindow")]
-    pub last_window:       String,
-    
-    #[serde(rename = "lastwindowtitle")]
-    pub last_window_title: String,
-}
-
-async fn hyprland_event_listener_async(tx: Sender<i32>) -> tokio::io::Result<()> {
-    let mut stream = UnixStream::connect(event_socket()).await?;
-    let mut buffer = [0; 4096];
-
-    let workspace = get_active_workspace_async().await?;
-    tx.send(workspace).await.unwrap();
-
-    loop {
-        let bytes_count = stream.read(&mut buffer).await?;
-        
-        if bytes_count == 0 {
-            break;
-        }
-    
-        let response = String::from_utf8_lossy(&buffer[..bytes_count]);
-        let event_strings = response.split('\n');
-    
-        for event in event_strings {
-            if event.starts_with("workspace") || event.starts_with("focusedmon") {
-
-                let workspace = get_active_workspace_async().await?;
-                tx.send(workspace).await.unwrap();
-    
-                break;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn get_active_workspace_async() -> tokio::io::Result<i32> {
-    
-    let response = make_hyprctl_request(&"j/activeworkspace".to_string()).await?;
-
-    let deserialized: Workspace = serde_json::from_str(&response)?;
-    
-    Ok(deserialized.id)
-}
-
-async fn make_hyprctl_request(request: &String) -> tokio::io::Result<String> {
-    let mut stream = UnixStream::connect(hyprctl_socket()).await?;
-
-    let _ = stream.write_all(request.as_bytes()).await?;
-
-    let mut buf = [0; 8192]; //NOTE buffer size is taken from hyprctl sources
-    let bytes_count = stream.read(&mut buf).await?;
-    
-    let response = String::from_utf8(buf[..bytes_count].to_vec()).unwrap();
-
-    Ok(response)
-}
-
-//------------------------------------------------------------------------------------------------------------------------------
-//---------------------------------------------------[ Lazy cells ]-------------------------------------------------------------
-//------------------------------------------------------------------------------------------------------------------------------
-
-fn init_lazy_cells() {
-    Lazy::force(&XDG_RUNTIME_DIR);
-    Lazy::force(&HYPRLAND_INSTANCE_SIGNATURE);
-
-    Lazy::force(&HYPRCTL_SOCKET);
-    Lazy::force(&EVENT_SOCKET);
-}
-
-macro_rules! get_lazy {
-    ($name:ident $var:expr) => {
-        fn $name() -> &'static String {
-            Lazy::get($var).unwrap()
-        }
-    };
-}
-
-get_lazy!(xdg_runtime_dir             &XDG_RUNTIME_DIR);
-get_lazy!(hyprland_instance_signature &HYPRLAND_INSTANCE_SIGNATURE);
-get_lazy!(hyprctl_socket              &HYPRCTL_SOCKET);
-get_lazy!(event_socket                &EVENT_SOCKET);
-

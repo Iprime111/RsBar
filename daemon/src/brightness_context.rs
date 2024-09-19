@@ -1,4 +1,4 @@
-use std::{process::Command, sync::Arc};
+use std::{io::ErrorKind, process::Command, sync::Arc};
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -33,13 +33,11 @@ impl RsbarContextContent for BrightnessContext {
         let brightness_value = brightness_value_chars.as_str().parse::<f64>();
         
         match brightness_value {
-            Ok(value) => self.brightness = value,
+            Ok(value) => self.brightness = value / 100.0,
             Err(_)    => self.brightness = 0.0,
         };
 
-        let events = self.event_handler.as_mut().unwrap().lock().await;
-        
-        events.trigger_event("brightness/brightness", &self.brightness.to_string()).await;
+        self.force_events().await?;
 
         Ok(())
     }
@@ -49,6 +47,17 @@ impl RsbarContextContent for BrightnessContext {
             "setBrightness" => self.set_brightness(args),
             _ => None,
         }
+    }
+
+    async fn force_events(&mut self) -> tokio::io::Result<()> {
+        if self.event_handler.is_none() {
+            return Err(std::io::Error::new(ErrorKind::NotFound, "Event handler was not found"));
+        }
+
+        self.event_handler.as_mut().unwrap().lock().await
+            .trigger_event("brightness/brightness", &self.brightness.to_string()).await;
+
+        Ok(())
     }
 }
 

@@ -1,5 +1,5 @@
 use core::str;
-use std::{env, sync::Arc};
+use std::{env, io::ErrorKind, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -27,6 +27,7 @@ static EVENT_SOCKET: Lazy<String> = Lazy::new(||
 
 pub struct HyprlandContext {
     current_workspace: Arc<Mutex<i32>>,
+    event_handler:     Option<Arc<Mutex<EventHandler>>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -55,6 +56,7 @@ impl RsbarContextContent for HyprlandContext {
 
         init_lazy_cells();
 
+        self.event_handler = Some(event_handler.clone());
         tokio::spawn(Self::hyprland_event_listener_async(event_handler, self.current_workspace.clone()));
 
         Ok(())
@@ -69,20 +71,36 @@ impl RsbarContextContent for HyprlandContext {
         match procedure {
             "setWorkspace" => { 
                 let _ = Self::make_hyprctl_request(&format!("dispatch workspace {}", args)).await; 
-                return Some(args.to_string());
+                return Some("".to_string());
             },
             "workspace" => {
-                return self.current_workspace.lock().await;
+                let workspace = self.current_workspace.lock().await.clone();
+
+                return Some(workspace.to_string());
             },
             _ => return None,
         };
 
     }
+
+    async fn force_events(&mut self) -> tokio::io::Result<()> {
+        if self.event_handler.is_none() {
+            return Err(std::io::Error::new(ErrorKind::NotFound, "Event handler was not found"));
+        }
+
+        self.event_handler.as_mut().unwrap().lock().await
+            .trigger_event("hyprland/workspace", &self.current_workspace.lock().await.to_string()).await;
+
+        Ok(())
+    }
 }
 
 impl HyprlandContext {
     pub fn new() -> (String, RsbarContext) {
-        let new_context = Box::new(HyprlandContext { current_workspace: Arc::new(Mutex::new(-1)) });
+        let new_context = Box::new(HyprlandContext { 
+            current_workspace: Arc::new(Mutex::new(-1)),
+            event_handler:     None,
+        });
 
         ("hyprland".to_string(), RsbarContext::new(new_context))
     }

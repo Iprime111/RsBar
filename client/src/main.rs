@@ -9,7 +9,8 @@ mod unix_sockets;
 
 use bar_widget::BarWidget;
 use brightness_widget::BrightnessWidget;
-use unix_sockets::setup_unix_sockets;
+use tokio_runtime::tokio_runtime;
+use unix_sockets::{setup_unix_sockets, ChannelsData};
 use volume_widget::VolumeWidget;
 use hyprland_workspaces_widget::HyprlandWorkspacesWidget;
 use gtk4::{prelude::*, Application, ApplicationWindow};
@@ -17,9 +18,8 @@ use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
 
 // TODO rewrite this shit to use a client-server architecture
-#[tokio::main]
-async fn main() {
-    let channels_data = setup_unix_sockets();
+fn main() {
+    let channels_data = tokio_runtime().block_on(setup_unix_sockets()).unwrap();
 
     let app_id = format!("org.rsbar.bar");
     let app    = Application::builder().application_id(app_id).build();
@@ -36,21 +36,21 @@ async fn main() {
             gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
     
-        build_ui(app);
+        tokio_runtime().block_on(build_ui(app, &channels_data));
     });
     
     app.run();
 }
 
-fn build_ui(app: &Application) {
+async fn build_ui(app: &Application, channels_data: &ChannelsData) {
     let display = gtk4::gdk::Display::default().expect("Could not connect to a display.");
 
     for monitor_id in 0..display.monitors().n_items() {
-        build_window(app, &display, monitor_id);
+        build_window(app, &display, monitor_id, channels_data).await;
     }
 }
 
-fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_id: u32) {
+async fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_id: u32, channels_data: &ChannelsData) {
     let monitor       = display.monitors().item(monitor_id).unwrap().downcast::<gtk4::gdk::Monitor>().unwrap();
     let screen_height = monitor.geometry().height();
 
@@ -75,10 +75,10 @@ fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_id: u32
     grid.attach(&middle_box, 0, 1, 1, 1);
     grid.attach(&bottom_box, 0, 2, 1, 1);
 
-    let mut time       = TimeWidget::new();
-    let mut volume     = VolumeWidget::new(500);
-    let mut brightness = BrightnessWidget::new(500);
-    let     workspaces = HyprlandWorkspacesWidget::new(9, 1);
+    let time       = Box::new(TimeWidget::new());
+    let volume     = Box::new(VolumeWidget::new(500));
+    let brightness = Box::new(BrightnessWidget::new(500));
+    let workspaces = Box::new(HyprlandWorkspacesWidget::new(9, 1));
 
     let window = gtk4::ApplicationWindow::builder()
         .application(app)
@@ -98,9 +98,20 @@ fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_id: u32
     time.bind_widget(&top_box);
     workspaces.bind_widget(&middle_box);
     volume.bind_widget(&bottom_box);
-    brightness.bind_widget(&bottom_box);//TODO Vec
-}
+    brightness.bind_widget(&bottom_box);
+    
+    let widgets: Vec<Box<dyn BarWidget>> = vec![time, workspaces, volume, brightness];
 
+    for widget in widgets {
+        let events = widget.events_list();
+
+        for event in events {
+            let _ = channels_data.event_subscription_tx.send(event.to_string()).await;
+        }
+
+        widget.bind_channels(channels_data.clone());
+    }
+}
 
 fn setup_layer_shell(window: &ApplicationWindow, monitor: &gtk4::gdk::Monitor) {
     window.init_layer_shell();

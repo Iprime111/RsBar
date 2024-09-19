@@ -1,6 +1,10 @@
-use crate::bar_widget::BarWidget;
-use gtk4::prelude::{BoxExt, WidgetExt};
+use crate::{bar_widget::BarWidget, unix_sockets::ChannelsData};
+use gtk4::{glib::{clone::Downgrade, MainContext}, prelude::{BoxExt, WidgetExt}};
 use chrono::Local;
+
+const EVENTS_LIST: &[&str] = &[
+    "time/time",
+];
 
 pub struct TimeWidget {
     label: gtk4::Label,
@@ -18,18 +22,26 @@ impl TimeWidget {
 }
 
 impl BarWidget for TimeWidget {
-    fn bind_widget(&self, container: &impl BoxExt) {
+    fn bind_widget(&self, container: &gtk4::Box) {
         container.append(&self.label);
     }
 
-    fn update_widget(&mut self) {
-        let time = current_time();
-
-        self.label.set_text(&time);
+    fn events_list(&self) -> &'static[&'static str] {
+        EVENTS_LIST
     }
     
-}
+    fn bind_channels(&self, mut channels_data: ChannelsData) {
+        let weak_label = self.label.downgrade();
 
-fn current_time() -> String {
-    format!("{}", Local::now().format("%H\n%M"))
+        MainContext::default().spawn_local(async move {
+
+            while let Ok(event) = channels_data.event_rx.recv().await {
+                if event.name != EVENTS_LIST[0] {
+                    continue;
+                }
+
+                weak_label.upgrade().unwrap().set_text(&event.value);
+            }
+        });
+    }
 }

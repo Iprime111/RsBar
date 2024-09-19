@@ -8,6 +8,7 @@ use brightness_context::BrightnessContext;
 use hyprland_context::HyprlandContext;
 use server_context::ServerContext;
 
+use time_context::TimeContext;
 use tokio::net::{UnixStream, UnixListener};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::{sync::Mutex, task, time};
@@ -25,6 +26,7 @@ async fn main() -> tokio::io::Result<()> {
     main_context.add_context(VolumeContext::new());
     main_context.add_context(BrightnessContext::new());
     main_context.add_context(HyprlandContext::new());
+    main_context.add_context(TimeContext::new());
 
     main_context.init().await?;
 
@@ -66,14 +68,19 @@ async fn main() -> tokio::io::Result<()> {
 
 async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext>>) -> tokio::io::Result<()> {
     let (read_stream, mut write_stream) = stream.into_split();
-    let reader = tokio::io::BufReader::new(read_stream);
-    let mut lines = reader.lines();
+    let mut reader = tokio::io::BufReader::new(read_stream);
 
-    while let Some(request) = lines.next_line().await? {
+    let mut request_vec = Vec::new();
+
+    while reader.read_until(b'\0', &mut request_vec).await? > 0 {
+        request_vec.pop();
+        let request = String::from_utf8(request_vec.clone()).unwrap();
+
         println!("Got new call request: {}", request);
         
         let response = context.lock().await.new_call(&request).await;
-        
+        request_vec.clear();
+
         if response.is_none() {
             println!("Invalid request!");
             return Err(std::io::Error::new(ErrorKind::Other, ""));
@@ -90,8 +97,7 @@ async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext
 
 async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContext>>) -> tokio::io::Result<()> {
     let (read_stream, mut write_stream) = stream.into_split();
-    let reader = tokio::io::BufReader::new(read_stream);
-    let mut lines = reader.lines();
+    let mut reader = tokio::io::BufReader::new(read_stream);
 
     let (tx, mut rx) = mpsc::channel::<String>(32);
 
@@ -99,14 +105,25 @@ async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContex
         while let Some(message) = rx.recv().await {
             println!("New update: {}", message);
 
-            let _ = write_response(message.as_ref(), &mut write_stream).await;
+            let write_result = write_response(message.as_ref(), &mut write_stream).await;
+
+            if write_result.is_err() {
+                // TODO somehow remove channel from client when it's disconnecting?
+                break;
+            }
         }
     });
 
-    while let Some(request) = lines.next_line().await? {
+    let mut request_vec =  Vec::new();
+
+    while reader.read_until(b'\0', &mut request_vec).await? > 0 {
+        request_vec.pop();
+        let request = String::from_utf8(request_vec.clone()).unwrap();
+
         println!("Got new event request: {}", request);
 
         let _ = context.lock().await.new_event_client(&request, tx.clone()).await;
+        request_vec.clear();
     }
 
     Ok(())
@@ -121,7 +138,7 @@ fn bind_socket(path: impl AsRef<std::path::Path>) -> std::io::Result<UnixListene
 
 async fn write_response(response: &str, stream: &mut tokio::net::unix::OwnedWriteHalf) -> tokio::io::Result<()> {
     stream.write(response.as_bytes()).await?;
-    stream.write(b"\n").await?;
+    stream.write(b"\0").await?;
     stream.flush().await?;
     
     Ok(())

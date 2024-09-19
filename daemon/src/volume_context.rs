@@ -42,14 +42,7 @@ impl RsbarContextContent for VolumeContext {
             Err(_) => self.is_muted = true,
         };
 
-        if self.event_handler.is_none() {
-            return Err(std::io::Error::new(ErrorKind::Other, "Event handler is not set"));
-        }
-
-        let events = self.event_handler.as_mut().unwrap().lock().await;
-        
-        events.trigger_event("volume/volume",  &self.volume.to_string()).await;
-        events.trigger_event("volume/isMuted", &self.is_muted.to_string()).await;
+        self.force_events().await?;
 
         Ok(())
     }
@@ -60,6 +53,19 @@ impl RsbarContextContent for VolumeContext {
             "toggleMuted" => self.toggle_muted(args),
             _ => None,
         }
+    }
+
+    async fn force_events(&mut self) -> tokio::io::Result<()> {
+        if self.event_handler.is_none() {
+            return Err(std::io::Error::new(ErrorKind::NotFound, "Event handler was not found"));
+        }
+
+        let events = self.event_handler.as_mut().unwrap().lock().await;
+
+        events.trigger_event("volume/volume",  &self.volume.to_string()).await;
+        events.trigger_event("volume/isMuted", &self.is_muted.to_string()).await;
+
+        Ok(())
     }
 }
 

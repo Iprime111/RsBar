@@ -900,6 +900,7 @@ name = "rsbar"
 version = "1.0.4"
 dependencies = [
  "async-channel",
+ "async-trait",
  "chrono",
  "gtk4",
  "gtk4-layer-shell",

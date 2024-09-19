@@ -1,13 +1,15 @@
-use std::process::Command;
-
 use crate::bar_widget::BarWidget;
 use crate::slider_widget::SliderWidget;
-
-use gtk4::prelude::BoxExt;
+use crate::unix_sockets::ChannelsData;
 
 const MAX_VOLUME:    f64 = 100.0;
 const SLIDER_HEIGHT: i32 = 100;
 const VOLUME_ICONS: [&str; 4] = ["󰖁", "󰕿", "󰖀", "󰕾"];
+
+const EVENTS_LIST: &[&str] = &[
+    "volume/volume",
+    "volume/isMuted",
+];
 
 #[derive(Clone)]
 pub struct VolumeWidget {
@@ -35,38 +37,38 @@ impl VolumeWidget {
 }
 
 impl BarWidget for VolumeWidget {
-    fn update_widget(&mut self) {
-        self.slider_widget.update_widget();
-    }
-
-    fn bind_widget(&self, container: &impl BoxExt) {
+    fn bind_widget(&self, container: &gtk4::Box) {
         self.slider_widget.bind_widget(container);
     }
-}
 
-fn toggle_mute() {
-    let _ = Command::new("wpctl").arg("set-mute").arg("@DEFAULT_AUDIO_SINK@").arg("toggle").status();
-}
-
-fn set_system_volume(volume: f64) {
-    if get_system_volume() < 0.0 {
-        toggle_mute();
+    fn events_list(&self) -> &'static[&'static str] {
+        EVENTS_LIST
     }
 
-    let _ = Command::new("wpctl").arg("set-volume").arg("@DEFAULT_AUDIO_SINK@").arg(format!("{}%", volume * 100.0)).status();
+    fn bind_channels(&self, channels_data: ChannelsData) {
+        self.slider_widget.bind_channels(channels_data);
+    }
+
 }
 
-fn get_system_volume() -> f64 {
-    let output = Command::new("wpctl").arg("get-volume").arg("@DEFAULT_AUDIO_SINK@").output().unwrap();
+fn toggle_mute() -> String {
+    "volume/toggleMute/".to_string()
+}
 
-    let result_string = String::from_utf8_lossy(&output.stdout);
-    let mut sound_value_chars = result_string.split_once(' ').unwrap().1.chars();
-    sound_value_chars.next_back();
+fn set_system_volume(volume: f64) -> String {
+    format!("volume/setVolume/{}", volume)
+}
 
-    let sound_value = sound_value_chars.as_str().parse::<f64>();
-
-    match sound_value {
-        Ok(value) => value,
-        Err(_)    => -1.0,
+fn get_system_volume(name: &str, value: &str) -> Option<f64> {
+    if name != "volume/volume" {
+        return None;
     }
+
+    let value_float = value.parse::<f64>();
+
+    if value_float.is_err() {
+        return None;
+    }
+
+    Some(value_float.unwrap())
 }

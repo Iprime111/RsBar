@@ -11,6 +11,8 @@ pub trait RsbarContextContent {
     async fn init(&mut self, event_handler: Arc<Mutex<EventHandler>>) -> tokio::io::Result<()>;
     async fn update(&mut self) -> tokio::io::Result<()>;
 
+    async fn force_events(&mut self) -> tokio::io::Result<()>;
+
     // Event socket:
     // Event subscription format: "<context name>/<parameter name>"
     // Event response format:     "<parameter content>" or None in case of error
@@ -50,14 +52,14 @@ impl EventHandler {
 
     pub async fn trigger_event(&self, name: &str, data: &str) {
         let clients = self.events.get(name);
-
+        
         if clients.is_none() {
             return;
         }
 
         for client in clients.unwrap() {
 
-            let response = format!("{} {}", name, data);
+            let response = format!("{}/{}", name, data);
             let _ = client.send(response).await;
         }
     }
@@ -96,11 +98,10 @@ impl ServerContext {
     pub async fn new_event_client(&mut self, request: &str, stream: mpsc::Sender<String>) -> Option<()> {
         let request_parts = split_request(request, EVENT_REQUEST_PARTS)?;
         
-        if !self.contexts.contains_key(request_parts[0]) {
-            println!("Invalid context name: {}", request_parts[0]);
-            return None;    
-        }
-    
+        let context = self.contexts.get_mut(request_parts[0])?;
+
+        let _ = context.context.force_events().await;
+
         self.event_handler.lock().await.add_event(request, stream);
 
         Some(())
@@ -112,7 +113,7 @@ impl ServerContext {
 
     pub async fn update(&mut self) -> tokio::io::Result<()> {
         for (_context_name, context) in &mut self.contexts {
-            //  TODO figure out how to run these updates concurrently           
+            // TODO figure out how to run these updates concurrently           
             context.context.update().await?;
         };
 
@@ -122,8 +123,6 @@ impl ServerContext {
 
 fn split_request(request: &str, right_parts_count: usize) -> Option<Vec<&str>> {
     let request_trimmed = request.trim();
-    
-    println!("Request: \"{}\"", &request_trimmed);
     
     let request_parts: Vec<&str> = request_trimmed.split('/').collect();
     let parts_count = request_parts.len();
