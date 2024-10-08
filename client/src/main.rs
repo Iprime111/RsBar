@@ -7,6 +7,8 @@ mod hyprland_workspaces_widget;
 mod tokio_runtime;
 mod unix_sockets;
 
+use std::{fs, path::Path};
+
 use bar_widget::BarWidget;
 use brightness_widget::BrightnessWidget;
 use tokio_runtime::tokio_runtime;
@@ -16,6 +18,8 @@ use hyprland_workspaces_widget::HyprlandWorkspacesWidget;
 use gtk4::{prelude::*, Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
+
+static CONFIG_PATH: &str = ".config/rsbar/style.css";
 
 fn main() {
     let channels_data = tokio_runtime().block_on(setup_unix_sockets()).unwrap();
@@ -27,8 +31,8 @@ fn main() {
         let display = gtk4::gdk::Display::default().expect("Could not connect to a display.");
 
         let provider = gtk4::CssProvider::new();
-    
-        provider.load_from_string(include_str!("style.css"));
+
+        provider.load_from_string(&read_css_config());
         gtk4::style_context_add_provider_for_display(
             &display,
             &provider,
@@ -39,6 +43,23 @@ fn main() {
     });
     
     app.run();
+}
+
+fn read_css_config() -> String {
+    let home_folder_result = std::env::var("HOME"); 
+    
+    if home_folder_result.is_err() {
+        panic!("Unable to determine home folder path");
+    }
+
+    let full_config_path = format!("{}/{CONFIG_PATH}", home_folder_result.unwrap());
+    let config_content_result = fs::read_to_string(Path::new(&full_config_path));
+
+    if config_content_result.is_err() {
+        panic!("Unable to find config in {full_config_path}");
+    }
+
+    config_content_result.unwrap()
 }
 
 async fn build_ui(app: &Application, channels_data: &ChannelsData) {
