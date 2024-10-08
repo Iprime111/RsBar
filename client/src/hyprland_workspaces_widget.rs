@@ -44,7 +44,6 @@ impl BarWidget for HyprlandWorkspacesWidget {
 
         let buttons        = self.buttons.clone();
         let last_workspace = self.last_workspace.clone();
-
         
 
         MainContext::default().spawn_local(async move {

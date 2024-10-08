@@ -1,5 +1,5 @@
 use crate::bar_widget::BarWidget;
-use crate::slider_widget::SliderWidget;
+use crate::slider_widget::{SliderFetchResult, SliderWidget};
 use crate::unix_sockets::ChannelsData;
 
 const MAX_VOLUME:    f64 = 100.0;
@@ -59,16 +59,22 @@ fn set_system_volume(volume: f64) -> String {
     format!("volume/setVolume/{}", volume)
 }
 
-fn get_system_volume(name: &str, value: &str) -> Option<f64> {
-    if name != "volume/volume" {
-        return None;
+fn get_system_volume(name: &str, value: &str) -> SliderFetchResult {
+    if name == EVENTS_LIST[0] {
+        let value_float = value.parse::<f64>();
+        
+        if value_float.is_err() {
+            return SliderFetchResult::None;
+        }
+        
+        return SliderFetchResult::Value(value_float.unwrap());
+    } else if name == EVENTS_LIST[1] {
+        return match value {
+            "false" => SliderFetchResult::On,
+            "true"  => SliderFetchResult::Off,
+            _       => SliderFetchResult::None,
+        };
     }
 
-    let value_float = value.parse::<f64>();
-
-    if value_float.is_err() {
-        return None;
-    }
-
-    Some(value_float.unwrap())
+    SliderFetchResult::None
 }

@@ -49,10 +49,15 @@ impl RsbarContextContent for VolumeContext {
 
     async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
         match procedure {
-            "setVolume"   => self.set_volume(args),
-            "toggleMuted" => self.toggle_muted(args),
+            "setVolume"  => self.set_volume(args),
+            "toggleMute" => self.toggle_muted(args),
             _ => None,
-        }
+        };
+
+        let _ = self.force_events().await;
+        dbg!("events sent");
+
+        Some("".to_string())
     }
 
     async fn force_events(&mut self) -> tokio::io::Result<()> {

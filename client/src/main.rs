@@ -17,7 +17,6 @@ use gtk4::{prelude::*, Application, ApplicationWindow};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use time_widget::TimeWidget;
 
-// TODO rewrite this shit to use a client-server architecture
 fn main() {
     let channels_data = tokio_runtime().block_on(setup_unix_sockets()).unwrap();
 

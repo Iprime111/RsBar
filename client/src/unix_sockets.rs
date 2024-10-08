@@ -39,7 +39,6 @@ async fn connect_to_unix_socket(socket_path: &str) -> tokio::io::Result<UnixSock
 }
 
 async fn send_message(stream: &mut OwnedWriteHalf, message: &str) -> tokio::io::Result<()> {
-    // TODO additional checks for '\n'
     stream.write(message.as_bytes()).await?;
     stream.write(b"\0").await?;
     stream.flush().await?;
@@ -94,7 +93,6 @@ pub async fn setup_unix_sockets() -> tokio::io::Result<ChannelsData> {
 
             event_vec.clear();
         }
-
     });
 
     tokio::spawn(async move {
@@ -103,11 +101,6 @@ pub async fn setup_unix_sockets() -> tokio::io::Result<ChannelsData> {
 
             // TODO process errors
             let _ = send_message(&mut call_socket_data.write_stream, call.as_str()).await;
-
-            let mut response = Vec::new();
-            let _ = call_socket_data.reader.read_until(b'\0', &mut response).await;
-
-            // TODO transmit response
         }
     });
 

@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use gtk4::{glib::object::ObjectExt, prelude::GestureExt};
 use gtk4::glib::{MainContext, SignalHandlerId};
@@ -8,16 +9,22 @@ use gtk4::prelude::{BoxExt, WidgetExt, RangeExt};
 
 const EPS: f64 = 1e-5;
 
-type GetterFunction = fn(&str, &str) -> Option<f64>;
+type GetterFunction = fn(&str, &str) -> SliderFetchResult;
 type SetterFunction = fn(f64) -> String;
 type ClickFunction  = fn() -> String;
+
+pub enum SliderFetchResult {
+    On,
+    Off,
+    Value(f64),
+    None,
+}
 
 #[derive(Clone)]
 pub struct SliderWidget {
     slider:               gtk4::Scale,
     label:                gtk4::Label,
     container:            gtk4::Box,
-    value_changed_signal: Arc<SignalHandlerId>,
     max_value:            f64,
     icons:                Vec<String>,
     get_value:            GetterFunction,
@@ -40,7 +47,7 @@ pub struct SliderWidgetBuilder {
 }
 
 fn dummy_set(_: f64) -> String { String::new() }
-fn dummy_get(_: &str, _: &str) -> Option<f64> { Some(0.0) }
+fn dummy_get(_: &str, _: &str) -> SliderFetchResult { SliderFetchResult::Value(0.0) }
 fn dummy_click() -> String { String::new() }
 
 impl Default for SliderWidgetBuilder {
@@ -97,13 +104,6 @@ impl SliderWidget {
         let motion_controller = gtk4::EventControllerMotion::new();
         container.add_controller(motion_controller.clone());
 
-        let max_value = builder.max_value;
-        let callback  = builder.set_value; 
-
-        let value_changed_signal = slider.connect_value_changed(move |scale| {
-            (callback)(scale.value() / max_value);
-        });
-
         let revealer_clone_1 = revealer.clone();
         let revealer_clone_2 = revealer.clone();
 
@@ -119,7 +119,6 @@ impl SliderWidget {
             slider: slider.clone(),
             label: label.clone(),
             container,
-            value_changed_signal: Arc::new(value_changed_signal),
             max_value: builder.max_value,
             icons:     builder.icons.clone(),
             get_value: builder.get_value,
@@ -153,10 +152,10 @@ impl SliderWidget {
         slider
     }
 }
-fn update_slider(slider: &gtk4::Scale, value_changed_signal: &Arc<SignalHandlerId>, value: f64) {
-    slider.block_signal(&value_changed_signal);
+fn update_slider(slider: &gtk4::Scale, value_changed_signal: &SignalHandlerId, value: f64) {
+    slider.block_signal(value_changed_signal);
     slider.set_value(value * 100.0);
-    slider.unblock_signal(&value_changed_signal);
+    slider.unblock_signal(value_changed_signal);
 }
 
 fn update_button(label: &gtk4::Label, icons: &Vec<String>, value: f64) {
@@ -196,25 +195,55 @@ impl BarWidget for SliderWidget {
         });
         self.label.add_controller(gesture);
 
-        self.slider.connect_value_changed(move |scale| {
+        let is_on = Rc::new(RefCell::new(true));
+        let is_on_clone = is_on.clone();
+
+        let value_changed_signal = self.slider.connect_value_changed(move |scale| {
             let value = scale.value() / widget_clone_1.max_value;
 
             update_button(&widget_clone_1.label, &widget_clone_1.icons, value);
             let _ = call_tx_clone.send((widget_clone_1.set_value)(value));
+            
+            if value > EPS && !*is_on_clone.borrow() {
+                let _ = call_tx_clone.send((widget_clone_1.click)());
+                *is_on_clone.borrow_mut() = true;
+            }
         });
 
         MainContext::default().spawn_local(async move {
+            let mut value = 0.0;
+
             while let Ok(event) = channels_data.event_rx.recv().await {
                 let new_value = (widget_clone_2.get_value)(&event.name, &event.value);
+                
+                match new_value {
+                    SliderFetchResult::On =>  {
+                        if !*is_on.borrow() {
+                            *is_on.borrow_mut() = true;
 
-                if new_value.is_none() {
-                    continue;
+                            update_slider(&widget_clone_2.slider, &value_changed_signal, value);
+                            update_button(&widget_clone_2.label, &widget_clone_2.icons, value);
+                        }
+                    },
+                    SliderFetchResult::Off => {
+                        if *is_on.borrow() {
+                            *is_on.borrow_mut() = false;
+
+                            update_slider(&widget_clone_2.slider, &value_changed_signal, 0.0);
+                            update_button(&widget_clone_2.label, &widget_clone_2.icons, 0.0);
+
+                        }
+                    },
+                    SliderFetchResult::Value(slider_value) => {
+                        value = slider_value;
+
+                        if *is_on.borrow() {
+                            update_slider(&widget_clone_2.slider, &value_changed_signal, slider_value);
+                            update_button(&widget_clone_2.label, &widget_clone_2.icons, slider_value);
+                        }
+                    },
+                    SliderFetchResult::None => continue,
                 }
-    
-                let slider_value = new_value.unwrap();
-
-                update_slider(&widget_clone_2.slider,&widget_clone_2.value_changed_signal, slider_value);
-                update_button(&widget_clone_2.label, &widget_clone_2.icons, slider_value);
             }
         });
     }

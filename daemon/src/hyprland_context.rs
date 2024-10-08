@@ -57,7 +57,7 @@ impl RsbarContextContent for HyprlandContext {
         init_lazy_cells();
 
         self.event_handler = Some(event_handler.clone());
-        tokio::spawn(Self::hyprland_event_listener_async(event_handler, self.current_workspace.clone()));
+        tokio::spawn(Self::listener_loop(event_handler, self.current_workspace.clone()));
 
         Ok(())
     }
@@ -105,20 +105,26 @@ impl HyprlandContext {
         ("hyprland".to_string(), RsbarContext::new(new_context))
     }
 
-    async fn hyprland_event_listener_async(event_handler: Arc<Mutex<EventHandler>>, current_workspace: Arc<Mutex<i32>>) -> tokio::io::Result<()> {
+    async fn listener_loop(event_handler: Arc<Mutex<EventHandler>>, current_workspace: Arc<Mutex<i32>>) {
+        if let Err(result) = Self::hyprland_event_listener_async(&event_handler, &current_workspace).await {
+            println!("Hyprland error: {}", result);
+        }
+    }
+
+    async fn hyprland_event_listener_async(event_handler: &Arc<Mutex<EventHandler>>, current_workspace: &Arc<Mutex<i32>>) -> tokio::io::Result<()> {
         let mut stream = UnixStream::connect(event_socket()).await?;
         let mut buffer = [0; 4096]; // TODO remove magic number
-        
+
         let workspace = Self::get_active_workspace_async().await?;
 
         *current_workspace.lock().await = workspace;
         event_handler.lock().await.trigger_event("hyprland/workspace", &workspace.to_string()).await;
-        
+
         loop {
             let bytes_count = stream.read(&mut buffer).await?;
             
             if bytes_count == 0 {
-                break;
+                continue;
             }
         
             let response = String::from_utf8_lossy(&buffer[..bytes_count]);
@@ -136,8 +142,6 @@ impl HyprlandContext {
                 }
             }
         }
-        
-        Ok(())
     }
 
     async fn get_active_workspace_async() -> tokio::io::Result<i32> {

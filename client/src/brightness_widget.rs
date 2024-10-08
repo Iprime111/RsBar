@@ -1,10 +1,10 @@
 use crate::bar_widget::BarWidget;
-use crate::slider_widget::SliderWidget;
+use crate::slider_widget::{SliderFetchResult, SliderWidget};
 use crate::unix_sockets::ChannelsData;
 
 const MAX_BRIGHTNESS: f64 = 100.0;
 const SLIDER_HEIGHT:  i32 = 100;
-const ICON: [&str; 1] = ["󰖙"];
+const BRIGHTNESS_ICON: [&str; 1] = ["󰖙"];
 
 const EVENTS_LIST: &[&str] = &[
     "brightness/brightness",
@@ -19,7 +19,7 @@ impl BrightnessWidget {
     pub fn new(duration: u32) -> Self {
         BrightnessWidget {
             slider_widget: SliderWidget::builder()
-                .icons(&ICON.map(|x| x.to_string()))
+                .icons(&BRIGHTNESS_ICON.map(|x| x.to_string()))
                 .transition_duration(duration)
                 .slider_height(SLIDER_HEIGHT)
                 .max_value(MAX_BRIGHTNESS)
@@ -52,18 +52,18 @@ fn set_system_brightness(brightness: f64) -> String {
     format!("brightness/setBrightness/{}", brightness)
 }
 
-fn get_system_brightness(name: &str, value: &str) -> Option<f64> {
+fn get_system_brightness(name: &str, value: &str) -> SliderFetchResult {
 
-    if name != "brightness/brightness" {
-        return None;
+    if name != EVENTS_LIST[0] {
+        return SliderFetchResult::None;
     }
 
     let value_float = value.parse::<f64>();
 
     if value_float.is_err() {
-        return None;
+        return SliderFetchResult::None;
     }
 
-    Some(value_float.unwrap())
+    SliderFetchResult::Value(value_float.unwrap())
 }
 

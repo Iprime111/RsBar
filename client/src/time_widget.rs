@@ -1,6 +1,5 @@
 use crate::{bar_widget::BarWidget, unix_sockets::ChannelsData};
 use gtk4::{glib::{clone::Downgrade, MainContext}, prelude::{BoxExt, WidgetExt}};
-use chrono::Local;
 
 const EVENTS_LIST: &[&str] = &[
     "time/time",

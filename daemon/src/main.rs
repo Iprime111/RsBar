@@ -13,11 +13,10 @@ use tokio::net::{UnixStream, UnixListener};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::{sync::Mutex, task, time};
 use volume_context::VolumeContext;
-use std::io::ErrorKind;
 use tokio::sync::mpsc;
 use std::{sync::Arc, time::Duration};
 
-const POLLING_INTERVAL: u64 = 1000; 
+const POLLING_INTERVAL: u64 = 10000; 
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
@@ -67,7 +66,7 @@ async fn main() -> tokio::io::Result<()> {
 }
 
 async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext>>) -> tokio::io::Result<()> {
-    let (read_stream, mut write_stream) = stream.into_split();
+    let (read_stream, _) = stream.into_split();
     let mut reader = tokio::io::BufReader::new(read_stream);
 
     let mut request_vec = Vec::new();
@@ -83,13 +82,8 @@ async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext
 
         if response.is_none() {
             println!("Invalid request!");
-            return Err(std::io::Error::new(ErrorKind::Other, ""));
+            continue;
         }
-
-        let response_str = response.unwrap();
-        
-        println!("Response: {}", response_str);
-        write_response(&response_str, &mut write_stream).await?;
     }
 
     Ok(())
