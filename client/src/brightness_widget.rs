@@ -1,13 +1,14 @@
-use std::process::Command;
-
 use crate::bar_widget::BarWidget;
-use crate::slider_widget::SliderWidget;
-
-use gtk4::prelude::BoxExt;
+use crate::slider_widget::{SliderFetchResult, SliderWidget};
+use crate::unix_sockets::ChannelsData;
 
 const MAX_BRIGHTNESS: f64 = 100.0;
 const SLIDER_HEIGHT:  i32 = 100;
-const ICON: [&str; 1] = ["󰖙"];
+const BRIGHTNESS_ICON: [&str; 1] = ["󰖙"];
+
+const EVENTS_LIST: &[&str] = &[
+    "brightness/brightness",
+];
 
 #[derive(Clone)]
 pub struct BrightnessWidget {
@@ -18,7 +19,7 @@ impl BrightnessWidget {
     pub fn new(duration: u32) -> Self {
         BrightnessWidget {
             slider_widget: SliderWidget::builder()
-                .icons(&ICON.map(|x| x.to_string()))
+                .icons(&BRIGHTNESS_ICON.map(|x| x.to_string()))
                 .transition_duration(duration)
                 .slider_height(SLIDER_HEIGHT)
                 .max_value(MAX_BRIGHTNESS)
@@ -34,31 +35,35 @@ impl BrightnessWidget {
 }
 
 impl BarWidget for BrightnessWidget {
-    fn update_widget(&mut self) {
-        self.slider_widget.update_widget();
-    }
-
-    fn bind_widget(&self, container: &impl BoxExt) {
+    fn bind_widget(&self, container: &gtk4::Box) {
         self.slider_widget.bind_widget(container);
     }
-}
 
-fn set_system_brightness(brightness: f64) {
-    let _ = Command::new("brightnessctl").arg("-q").arg("set").arg(format!("{}%", brightness * 100.0)).status();
-}
-
-fn get_system_brightness() -> f64 {
-    let output = Command::new("brightnessctl").arg("-m").output().unwrap();
-
-    let result_string = String::from_utf8_lossy(&output.stdout);
-    let mut brightness_value_chars = result_string.split(',').collect::<Vec<&str>>()[3].chars();
-    brightness_value_chars.next_back();
-
-    let brightness_value = brightness_value_chars.as_str().parse::<f64>();
-
-    match brightness_value {
-        Ok(value) => value / 100.0,
-        Err(_)    => -1.0,
+    fn events_list(&self) -> &'static[&'static str] {
+        EVENTS_LIST
     }
+
+    fn bind_channels(&self, channels_data: ChannelsData) {
+        self.slider_widget.bind_channels(channels_data);
+    }
+}
+
+fn set_system_brightness(brightness: f64) -> String {
+    format!("brightness/setBrightness/{}", brightness)
+}
+
+fn get_system_brightness(name: &str, value: &str) -> SliderFetchResult {
+
+    if name != EVENTS_LIST[0] {
+        return SliderFetchResult::None;
+    }
+
+    let value_float = value.parse::<f64>();
+
+    if value_float.is_err() {
+        return SliderFetchResult::None;
+    }
+
+    SliderFetchResult::Value(value_float.unwrap())
 }
 
