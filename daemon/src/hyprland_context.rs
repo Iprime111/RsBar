@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::Mutex};
 
-use crate::server_context::{EventHandler, RsbarContext, RsbarContextContent};
+use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
 //--------------------------------------------------------------------------------------------------------------------------------
 //---------------------------------------------------------[ Globals ]------------------------------------------------------------
@@ -66,21 +66,15 @@ impl RsbarContextContent for HyprlandContext {
         Ok(())
     }
 
-    async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
-        // TODO change workspace number
+    async fn call(&mut self, procedure: &str, args: &str) -> tokio::io::Result<()> {
         match procedure {
             "setWorkspace" => { 
-                let _ = Self::make_hyprctl_request(&format!("dispatch workspace {}", args)).await; 
-                return Some("".to_string());
+                Self::make_hyprctl_request(&format!("dispatch workspace {}", args)).await?; 
             },
-            "workspace" => {
-                let workspace = self.current_workspace.lock().await.clone();
-
-                return Some(workspace.to_string());
-            },
-            _ => return None,
+            _ => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad procedure value for hyprland context: {procedure}"))),
         };
 
+        Ok(())
     }
 
     async fn force_events(&mut self) -> tokio::io::Result<()> {
@@ -113,7 +107,9 @@ impl HyprlandContext {
 
     async fn hyprland_event_listener_async(event_handler: &Arc<Mutex<EventHandler>>, current_workspace: &Arc<Mutex<i32>>) -> tokio::io::Result<()> {
         let mut stream = UnixStream::connect(event_socket()).await?;
-        let mut buffer = [0; 4096]; // TODO remove magic number
+        
+        const HYPRLAND_RESPONSE_BUF_SIZE: usize = 4096; // NOTE the value's taken from hyprctl sources
+        let mut buffer = [0; HYPRLAND_RESPONSE_BUF_SIZE];
 
         let workspace = Self::get_active_workspace_async().await?;
 
@@ -123,6 +119,7 @@ impl HyprlandContext {
         loop {
             let bytes_count = stream.read(&mut buffer).await?;
             
+            // TODO check if response is valid
             if bytes_count == 0 {
                 continue;
             }

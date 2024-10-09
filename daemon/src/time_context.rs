@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Local, TimeDelta};
 use tokio::sync::Mutex;
 
-use crate::server_context::{EventHandler, RsbarContext, RsbarContextContent};
+use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
 const TIME_PRECISION_SEC: i64 = 2;
 const TIME_FORMAT: &str = "%H\n%M";
@@ -37,13 +37,8 @@ impl RsbarContextContent for TimeContext {
         Ok(())
     }
 
-    async fn call(&mut self, procedure: &str, _args: &str) -> Option<String> {
-        let _ = self.update().await;
-
-        match procedure {
-            "time"   => Some(self.time.format(TIME_FORMAT).to_string()),
-            _ => None,
-        }
+    async fn call(&mut self, _procedure: &str, _args: &str) -> tokio::io::Result<()> {
+        Err(std::io::Error::new(ErrorKind::NotFound, "Time context does not support calls"))
     }
 
     async fn force_events(&mut self) -> tokio::io::Result<()> {

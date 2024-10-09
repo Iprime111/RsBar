@@ -3,7 +3,7 @@ use std::{io::ErrorKind, process::Command, sync::Arc};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::server_context::{EventHandler, RsbarContext, RsbarContextContent};
+use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
 const MAX_BRIGHTNESS: f64 = 100.0;
 const MIN_BRIGHTNESS: f64 = 0.0;
@@ -42,11 +42,15 @@ impl RsbarContextContent for BrightnessContext {
         Ok(())
     }
 
-    async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
+    async fn call(&mut self, procedure: &str, args: &str) -> tokio::io::Result<()> {
         match procedure {
-            "setBrightness" => self.set_brightness(args),
-            _ => None,
-        }
+            "setBrightness" => self.set_brightness(args)?,
+            _ => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad procedure value for brightness context: {procedure}"))),
+        };
+
+        self.force_events().await?;
+
+        Ok(())
     }
 
     async fn force_events(&mut self) -> tokio::io::Result<()> {
@@ -71,22 +75,23 @@ impl BrightnessContext {
         ("brightness".to_string(), RsbarContext::new(new_context))
     }
 
-    fn set_brightness(&mut self, args: &str) -> Option<String> {
+    fn set_brightness(&mut self, args: &str) -> tokio::io::Result<()> {
         let parse_result = args.parse::<f64>();
 
         if !parse_result.is_ok() {
-            return None;
+            return Err(std::io::Error::new(ErrorKind::Other, format!("Bad brightness value: {args}")));
         }
 
         let value = parse_result.unwrap();
 
         if value < MIN_BRIGHTNESS || value > MAX_BRIGHTNESS {
-            return None;
+            return Err(std::io::Error::new(ErrorKind::Other, format!("Brightness value is out of range: {args}")));
         }
 
         self.brightness = value;
 
-        let _ = Command::new("brightnessctl").arg("-q").arg("set").arg(format!("{}%", value * 100.0)).status();
-        Some(String::from(args))
+        Command::new("brightnessctl").arg("-q").arg("set").arg(format!("{}%", value * 100.0)).status()?;
+
+        Ok(())
     }
 }

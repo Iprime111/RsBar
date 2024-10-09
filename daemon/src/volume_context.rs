@@ -4,7 +4,7 @@ use std::{io::ErrorKind, process::Command, sync::Arc};
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::server_context::{EventHandler, RsbarContext, RsbarContextContent};
+use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
 const MAX_VOLUME: f64 = 100.0;
 const MIN_VOLUME: f64 = 0.0;
@@ -47,17 +47,16 @@ impl RsbarContextContent for VolumeContext {
         Ok(())
     }
 
-    async fn call(&mut self, procedure: &str, args: &str) -> Option<String> {
+    async fn call(&mut self, procedure: &str, args: &str) -> tokio::io::Result<()> {
         match procedure {
-            "setVolume"  => self.set_volume(args),
-            "toggleMute" => self.toggle_muted(args),
-            _ => None,
+            "setVolume"  => self.set_volume(args)?,
+            "toggleMute" => self.toggle_muted(args)?,
+            _ => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad procedure value for volume context: {procedure}"))),
         };
 
-        let _ = self.force_events().await;
-        dbg!("events sent");
+        self.force_events().await?; // TODO use update instead of force_events?
 
-        Some("".to_string())
+        Ok(())
     }
 
     async fn force_events(&mut self) -> tokio::io::Result<()> {
@@ -85,29 +84,29 @@ impl VolumeContext {
         ("volume".to_string(), RsbarContext::new(new_context))
     }
 
-    fn set_volume(&mut self, args: &str) -> Option<String> {
+    fn set_volume(&mut self, args: &str) -> tokio::io::Result<()> {
         let parse_result = args.parse::<f64>();
 
         if !parse_result.is_ok() {
-            return None;
+            return Err(std::io::Error::new(ErrorKind::Other, format!("Bad volume value: {args}")));
         }
 
         let value = parse_result.unwrap();
 
         if value < MIN_VOLUME || value > MAX_VOLUME {
-            return None;
+            return Err(std::io::Error::new(ErrorKind::Other, format!("Volume value is out of range: {args}")));
         }
 
         self.volume = value;   
 
-        let _ = Command::new("wpctl").arg("set-volume").arg("@DEFAULT_AUDIO_SINK@").arg(format!("{}%", value * 100.0)).status();
-        Some(String::from(args))
+        Command::new("wpctl").arg("set-volume").arg("@DEFAULT_AUDIO_SINK@").arg(format!("{}%", value * 100.0)).status()?;
+        Ok(())
     }
 
-    fn toggle_muted(&mut self, _args: &str) -> Option<String> {
+    fn toggle_muted(&mut self, _args: &str) -> tokio::io::Result<()> {
         self.is_muted = !self.is_muted;
-        let _ = Command::new("wpctl").arg("set-mute").arg("@DEFAULT_AUDIO_SINK@").arg("toggle").status();
+        Command::new("wpctl").arg("set-mute").arg("@DEFAULT_AUDIO_SINK@").arg("toggle").status()?;
 
-        return Some(self.is_muted.to_string());
+        return Ok(());
     }
 }

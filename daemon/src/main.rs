@@ -3,6 +3,7 @@ mod volume_context;
 mod brightness_context;
 mod hyprland_context;
 mod time_context;
+mod rsbar_context;
 
 use brightness_context::BrightnessContext;
 use hyprland_context::HyprlandContext;
@@ -16,7 +17,7 @@ use volume_context::VolumeContext;
 use tokio::sync::mpsc;
 use std::{sync::Arc, time::Duration};
 
-const POLLING_INTERVAL: u64 = 10000; 
+const POLLING_INTERVAL: u64 = 1000; 
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
@@ -30,16 +31,27 @@ async fn main() -> tokio::io::Result<()> {
     main_context.init().await?;
 
     let main_context_shared = Arc::new(Mutex::new(main_context));
-    let context_clone_1 = main_context_shared.clone();
-    let context_clone_2 = main_context_shared.clone();
     
-    // TODO seaparate function 
+    spawn_listener_loops(main_context_shared.clone()).await?;
+
+    let mut interval = time::interval(Duration::from_millis(POLLING_INTERVAL));
+
+    // Update cycle
+    loop {
+        main_context_shared.lock().await.update().await?;
+        interval.tick().await;
+    }
+}
+
+async fn spawn_listener_loops(context: Arc<Mutex<ServerContext>>) -> tokio::io::Result<()> {
+    let context_clone = context.clone();
+
     let call_listener = bind_socket("/tmp/rsbar_call.sock")?;
 
     task::spawn(async move {
         loop {
             match call_listener.accept().await {
-                Ok((stream, _addr)) => { let _ = task::spawn(handle_call_client(stream, context_clone_1.clone())).await; },
+                Ok((stream, _addr)) => { let _ = task::spawn(handle_call_client(stream, context.clone())).await; },
                 Err(error) => { println!("Client connection failed (call request attempt): {:?}", error); },
             }
         }
@@ -50,19 +62,13 @@ async fn main() -> tokio::io::Result<()> {
     task::spawn(async move {
         loop {
             match event_listener.accept().await {
-                Ok((stream, _addr)) => { let _ = task::spawn(handle_event_client(stream, context_clone_2.clone())).await; },
+                Ok((stream, _addr)) => { let _ = task::spawn(handle_event_client(stream, context_clone.clone())).await; },
                 Err(error) => { println!("Client connection failed (event request attempt): {:?}", error); },
             }
         }
     });
 
-    let mut interval = time::interval(Duration::from_millis(POLLING_INTERVAL));
-
-    // Update cycle
-    loop {
-        main_context_shared.lock().await.update().await?;
-        interval.tick().await;
-    }
+    Ok(())
 }
 
 async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext>>) -> tokio::io::Result<()> {
@@ -77,13 +83,14 @@ async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext
 
         println!("Got new call request: {}", request);
         
-        let response = context.lock().await.new_call(&request).await;
-        request_vec.clear();
+        if let Err(response) = context.lock().await.new_call(&request).await {
+            println!("Invalid request: {response}");
 
-        if response.is_none() {
-            println!("Invalid request!");
+            request_vec.clear();
             continue;
         }
+
+        request_vec.clear();
     }
 
     Ok(())
@@ -99,10 +106,10 @@ async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContex
         while let Some(message) = rx.recv().await {
             println!("New update: {}", message);
 
-            let write_result = write_response(message.as_ref(), &mut write_stream).await;
-
-            if write_result.is_err() {
-                // TODO somehow remove channel from client when it's disconnecting?
+            // TODO somehow remove channel from client when it's disconnecting?
+            if let Err(write_result) = write_response(message.as_ref(), &mut write_stream).await {
+                println!("Error occuried while sending event: {write_result}");            
+    
                 break;
             }
         }
@@ -114,9 +121,12 @@ async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContex
         request_vec.pop();
         let request = String::from_utf8(request_vec.clone()).unwrap();
 
-        println!("Got new event request: {}", request);
+        println!("Got new event subscription request: {}", request);
 
-        let _ = context.lock().await.new_event_client(&request, tx.clone()).await;
+        if let Err(result) = context.lock().await.new_event_client(&request, tx.clone()).await {
+            println!("Error occuried while subscribing to event: {result}");
+        }
+
         request_vec.clear();
     }
 
