@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use gtk4::{glib::object::ObjectExt, prelude::GestureExt};
 use gtk4::glib::{MainContext, SignalHandlerId};
+use log::error;
 use crate::bar_widget::BarWidget;
 use crate::unix_sockets::ChannelsData;
 use gtk4::prelude::{BoxExt, WidgetExt, RangeExt};
@@ -178,7 +179,8 @@ impl BarWidget for SliderWidget {
     }
 
     fn events_list(&self) -> &'static[&'static str] {
-        panic!("events list must be specified manualy for each slider widget")
+        error!("events list must be specified manualy for each slider widget");
+        panic!();
     }
 
     fn bind_channels(&self, mut channels_data: ChannelsData) {

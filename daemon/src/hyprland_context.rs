@@ -2,6 +2,7 @@ use core::str;
 use std::{env, io::ErrorKind, sync::Arc};
 
 use async_trait::async_trait;
+use log::error;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::Mutex};
@@ -101,7 +102,7 @@ impl HyprlandContext {
 
     async fn listener_loop(event_handler: Arc<Mutex<EventHandler>>, current_workspace: Arc<Mutex<i32>>) {
         if let Err(result) = Self::hyprland_event_listener_async(&event_handler, &current_workspace).await {
-            println!("Hyprland error: {}", result);
+            error!("Hyprland error: {}", result);
         }
     }
 

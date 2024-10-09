@@ -11,6 +11,7 @@ use std::{fs, path::Path};
 
 use bar_widget::BarWidget;
 use brightness_widget::BrightnessWidget;
+use log::error;
 use tokio_runtime::tokio_runtime;
 use unix_sockets::{setup_unix_sockets, ChannelsData};
 use volume_widget::VolumeWidget;
@@ -22,6 +23,8 @@ use time_widget::TimeWidget;
 static CONFIG_PATH: &str = ".config/rsbar/style.css";
 
 fn main() {
+    colog::init();
+
     let channels_data = tokio_runtime().block_on(setup_unix_sockets()).unwrap();
 
     let app_id = format!("org.rsbar.bar");
@@ -49,14 +52,16 @@ fn read_css_config() -> String {
     let home_folder_result = std::env::var("HOME"); 
     
     if home_folder_result.is_err() {
-        panic!("Unable to determine home folder path");
+        error!("Unable to determine home folder path");
+        panic!();
     }
 
     let full_config_path = format!("{}/{CONFIG_PATH}", home_folder_result.unwrap());
     let config_content_result = fs::read_to_string(Path::new(&full_config_path));
 
     if config_content_result.is_err() {
-        panic!("Unable to find config in {full_config_path}");
+        error!("Unable to find config in {full_config_path}");
+        panic!();
     }
 
     config_content_result.unwrap()

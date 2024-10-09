@@ -24,7 +24,7 @@ impl RsbarContextContent for BrightnessContext {
     }
 
     async fn update(&mut self) -> tokio::io::Result<()> {
-        let output = Command::new("brightnessctl").arg("-m").output().unwrap();
+        let output = Command::new("brightnessctl").arg("-m").output()?;
 
         let result_string = String::from_utf8_lossy(&output.stdout);
         let mut brightness_value_chars = result_string.split(',').collect::<Vec<&str>>()[3].chars();

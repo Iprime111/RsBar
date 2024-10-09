@@ -26,7 +26,7 @@ impl RsbarContextContent for VolumeContext {
     }
 
     async fn update(&mut self) -> tokio::io::Result<()> {
-        let output = Command::new("wpctl").arg("get-volume").arg("@DEFAULT_AUDIO_SINK@").output().unwrap();
+        let output = Command::new("wpctl").arg("get-volume").arg("@DEFAULT_AUDIO_SINK@").output()?;
 
         let result_string = String::from_utf8_lossy(&output.stdout);
         let mut sound_value_chars = result_string.split_once(' ').unwrap().1.chars();
@@ -100,6 +100,7 @@ impl VolumeContext {
         self.volume = value;   
 
         Command::new("wpctl").arg("set-volume").arg("@DEFAULT_AUDIO_SINK@").arg(format!("{}%", value * 100.0)).status()?;
+        
         Ok(())
     }
 
@@ -107,6 +108,6 @@ impl VolumeContext {
         self.is_muted = !self.is_muted;
         Command::new("wpctl").arg("set-mute").arg("@DEFAULT_AUDIO_SINK@").arg("toggle").status()?;
 
-        return Ok(());
+        Ok(())
     }
 }

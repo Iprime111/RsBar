@@ -1,3 +1,4 @@
+use log::{error, info, warn};
 use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, net::{unix::{OwnedReadHalf, OwnedWriteHalf}, UnixStream}};
 
 pub struct ChannelsData {
@@ -56,13 +57,14 @@ pub async fn setup_unix_sockets() -> tokio::io::Result<ChannelsData> {
     let (event_tx, event_rx)   = tokio::sync::broadcast::channel::<RsbarEvent>(32);
     let (call_tx, mut call_rx) = tokio::sync::broadcast::channel::<String>(32);
 
-    // TODO subscribe to events
     
     tokio::spawn(async move {
         while let Some(new_event) = event_subscription_rx.recv().await {
-            // TODO process error
-            println!("Subscribing to event: {}", new_event);
-            let _ = send_message(&mut event_socket_data.write_stream, new_event.as_str()).await;
+            info!("Subscribing to event: {}", new_event);
+            
+            if let Err(error_info) = send_message(&mut event_socket_data.write_stream, new_event.as_str()).await {
+                warn!("Error occuried while subscribing to event {new_event}: {error_info}");
+            }
         }
     });
 
@@ -71,14 +73,16 @@ pub async fn setup_unix_sockets() -> tokio::io::Result<ChannelsData> {
 
         while event_reader.read_until(b'\0', &mut event_vec).await.unwrap() > 0 {
             event_vec.pop();
+
+            // TODO log error
             let event = String::from_utf8(event_vec.clone()).unwrap();
 
-            println!("Got event: {}", event);
+            info!("Got event: {event}");
 
             let split_result = split_at_nth_char_ex(&event, '/', 1);
         
             if split_result.is_none() {
-                println!("Bad event format");
+                error!("Bad event format: {event}");
                 continue;
             }
 
@@ -97,10 +101,12 @@ pub async fn setup_unix_sockets() -> tokio::io::Result<ChannelsData> {
 
     tokio::spawn(async move {
         while let Some(call) = call_rx.recv().await.ok() {
-            println!("Calling: {}", call);
+            info!("Calling remote procedure: {call}");
 
             // TODO process errors
-            let _ = send_message(&mut call_socket_data.write_stream, call.as_str()).await;
+            if let Err(error_info) = send_message(&mut call_socket_data.write_stream, call.as_str()).await {
+                warn!("Error occuried while calling {call}: {error_info}");
+            }
         }
     });
 

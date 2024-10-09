@@ -16,11 +16,14 @@ use tokio::{sync::Mutex, task, time};
 use volume_context::VolumeContext;
 use tokio::sync::mpsc;
 use std::{sync::Arc, time::Duration};
+use log::{error, warn, info};
 
 const POLLING_INTERVAL: u64 = 1000; 
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
+    colog::init();
+
     let mut main_context = ServerContext::new();
 
     main_context.add_context(VolumeContext::new());
@@ -52,7 +55,7 @@ async fn spawn_listener_loops(context: Arc<Mutex<ServerContext>>) -> tokio::io::
         loop {
             match call_listener.accept().await {
                 Ok((stream, _addr)) => { let _ = task::spawn(handle_call_client(stream, context.clone())).await; },
-                Err(error) => { println!("Client connection failed (call request attempt): {:?}", error); },
+                Err(error) => { error!("Client connection failed (call request attempt): {:?}", error); },
             }
         }
     });
@@ -63,7 +66,7 @@ async fn spawn_listener_loops(context: Arc<Mutex<ServerContext>>) -> tokio::io::
         loop {
             match event_listener.accept().await {
                 Ok((stream, _addr)) => { let _ = task::spawn(handle_event_client(stream, context_clone.clone())).await; },
-                Err(error) => { println!("Client connection failed (event request attempt): {:?}", error); },
+                Err(error) => { error!("Client connection failed (event request attempt): {:?}", error); },
             }
         }
     });
@@ -81,10 +84,10 @@ async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext
         request_vec.pop();
         let request = String::from_utf8(request_vec.clone()).unwrap();
 
-        println!("Got new call request: {}", request);
+        info!("Got new call request:{}", request);
         
         if let Err(response) = context.lock().await.new_call(&request).await {
-            println!("Invalid request: {response}");
+            warn!("Invalid request: {request}\n{response}");
 
             request_vec.clear();
             continue;
@@ -104,11 +107,11 @@ async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContex
 
     tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
-            println!("New update: {}", message);
+            info!("New update: {}", message);
 
             // TODO somehow remove channel from client when it's disconnecting?
             if let Err(write_result) = write_response(message.as_ref(), &mut write_stream).await {
-                println!("Error occuried while sending event: {write_result}");            
+                warn!("Error occuried while sending event: {write_result}");            
     
                 break;
             }
@@ -121,10 +124,10 @@ async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContex
         request_vec.pop();
         let request = String::from_utf8(request_vec.clone()).unwrap();
 
-        println!("Got new event subscription request: {}", request);
+        info!("Got new event subscription request: {}", request);
 
         if let Err(result) = context.lock().await.new_event_client(&request, tx.clone()).await {
-            println!("Error occuried while subscribing to event: {result}");
+            warn!("Error occuried while subscribing to event {request}: {result}");
         }
 
         request_vec.clear();
