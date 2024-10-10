@@ -84,7 +84,7 @@ async fn handle_call_client(stream: UnixStream, context: Arc<Mutex<ServerContext
         request_vec.pop();
         let request = String::from_utf8(request_vec.clone()).unwrap();
 
-        info!("Got new call request:{}", request);
+        info!("Got new call request: {}", request);
         
         if let Err(response) = context.lock().await.new_call(&request).await {
             warn!("Invalid request: {request}\n{response}");
