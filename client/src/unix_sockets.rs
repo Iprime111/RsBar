@@ -1,5 +1,9 @@
+use std::time::Duration;
+
 use log::{error, info, warn};
-use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, net::{unix::{OwnedReadHalf, OwnedWriteHalf}, UnixStream}};
+use tokio::{io::{AsyncBufReadExt, AsyncWriteExt, BufReader}, net::{unix::{OwnedReadHalf, OwnedWriteHalf}, UnixStream}, time::interval};
+
+const RECONNECTION_TIMEOUT: u64 = 1000;
 
 pub struct ChannelsData {
     pub event_subscription_tx: tokio::sync::mpsc::Sender<String>,
@@ -29,14 +33,30 @@ pub struct RsbarEvent {
 }
 
 async fn connect_to_unix_socket(socket_path: &str) -> tokio::io::Result<UnixSocketConnection> {
-    let server_stream               = UnixStream::connect(socket_path).await?;
-    let (read_stream, write_stream) = server_stream.into_split();
-    let reader                      = BufReader::new(read_stream);
+    let mut reconnection_timeout = interval(Duration::from_millis(RECONNECTION_TIMEOUT));
 
-    Ok(UnixSocketConnection {
-        write_stream,
-        reader
-    })
+    loop {
+        info!("Waiting for connection to {socket_path}");
+
+        let server_stream = UnixStream::connect(socket_path).await;
+
+        match server_stream {
+            Ok(stream) => {
+                let (read_stream, write_stream) = stream.into_split();
+                let reader                      = BufReader::new(read_stream);
+                
+                return Ok(UnixSocketConnection {
+                    write_stream,
+                    reader
+                });
+            },
+            Err(_) => {
+                warn!("Failed to connect. Retrying");
+                reconnection_timeout.tick().await;
+                continue;
+            },
+        }
+    }
 }
 
 async fn send_message(stream: &mut OwnedWriteHalf, message: &str) -> tokio::io::Result<()> {
@@ -48,6 +68,8 @@ async fn send_message(stream: &mut OwnedWriteHalf, message: &str) -> tokio::io::
 }
 
 pub async fn setup_unix_sockets() -> tokio::io::Result<ChannelsData> {
+    info!("Connecting to sockets");
+
     let mut event_socket_data = connect_to_unix_socket("/tmp/rsbar_event.sock").await?;
     let mut call_socket_data  = connect_to_unix_socket("/tmp/rsbar_call.sock").await?;
 
