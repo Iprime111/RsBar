@@ -1,17 +1,19 @@
 use core::str;
-use std::{env, io::ErrorKind, sync::Arc};
+use std::{env, io::ErrorKind, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::error;
+use log::{error, info, warn};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::Mutex};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixStream, sync::Mutex, time::interval};
 
 use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
 //--------------------------------------------------------------------------------------------------------------------------------
 //---------------------------------------------------------[ Globals ]------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------------------------------------
+
+const RECONNECTION_INTERVAL: u64 = 1000;
 
 static XDG_RUNTIME_DIR:             Lazy<String> = Lazy::new(|| env::var("XDG_RUNTIME_DIR").unwrap());
 static HYPRLAND_INSTANCE_SIGNATURE: Lazy<String> = Lazy::new(|| env::var("HYPRLAND_INSTANCE_SIGNATURE").unwrap());
@@ -107,12 +109,43 @@ impl HyprlandContext {
     }
 
     async fn hyprland_event_listener_async(event_handler: &Arc<Mutex<EventHandler>>, current_workspace: &Arc<Mutex<i32>>) -> tokio::io::Result<()> {
-        let mut stream = UnixStream::connect(event_socket()).await?;
+        let mut interval = interval(Duration::from_millis(RECONNECTION_INTERVAL));
+
+        info!("Connecting to the hyprland socket");
+
+        let mut stream: UnixStream;
+
+        loop {
+            match UnixStream::connect(event_socket()).await {
+                Ok(stream_result) => {
+                    stream = stream_result;
+                    break;
+                },
+                Err(error) => {
+                    warn!("Reconnecting to the hyprland socket: {error}");
+                    interval.tick().await;
+                    continue;
+                },
+            }
+        }
         
         const HYPRLAND_RESPONSE_BUF_SIZE: usize = 4096; // NOTE the value's taken from hyprctl sources
         let mut buffer = [0; HYPRLAND_RESPONSE_BUF_SIZE];
+    
+        info!("Acquiring workspace number");
 
-        let workspace = Self::get_active_workspace_async().await?;
+        let mut workspace: i32 = -1;
+
+        while workspace <= 0 {
+            match Self::get_active_workspace_async().await {
+                Ok(workspace_result) => workspace = workspace_result,
+                Err(error) => {
+                    warn!("Retrying to get a workspace: {error}");
+                    interval.tick().await;
+                    continue
+                },
+            }
+        }
 
         *current_workspace.lock().await = workspace;
         event_handler.lock().await.trigger_event("hyprland/workspace", &workspace.to_string()).await;

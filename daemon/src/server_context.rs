@@ -44,9 +44,9 @@ impl ServerContext {
         let request_parts = split_request(request, EVENT_REQUEST_PARTS)?;
         
         if let Some(context) = self.contexts.get_mut(request_parts[0]) {
-            let _ = context.context.force_events().await;
-            
             self.event_handler.lock().await.add_event(request, stream);
+            
+            let _ = context.context.force_events().await;
             
             return Ok(());
         }

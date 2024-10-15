@@ -36,7 +36,7 @@ async fn connect_to_unix_socket(socket_path: &str) -> tokio::io::Result<UnixSock
     let mut reconnection_timeout = interval(Duration::from_millis(RECONNECTION_TIMEOUT));
 
     loop {
-        info!("Waiting for connection to {socket_path}");
+        info!("Waiting for connection to the {socket_path}");
 
         let server_stream = UnixStream::connect(socket_path).await;
 
@@ -50,8 +50,8 @@ async fn connect_to_unix_socket(socket_path: &str) -> tokio::io::Result<UnixSock
                     reader
                 });
             },
-            Err(_) => {
-                warn!("Failed to connect. Retrying");
+            Err(error) => {
+                warn!("Failed to connect. Retrying: {error}");
                 reconnection_timeout.tick().await;
                 continue;
             },
