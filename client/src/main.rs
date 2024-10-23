@@ -6,10 +6,12 @@ mod brightness_widget;
 mod hyprland_workspaces_widget;
 mod tokio_runtime;
 mod unix_sockets;
+mod battery_widget;
 
 use std::{fs, path::Path};
 
 use bar_widget::BarWidget;
+use battery_widget::BatteryWidget;
 use brightness_widget::BrightnessWidget;
 use log::error;
 use tokio_runtime::tokio_runtime;
@@ -101,6 +103,7 @@ async fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_i
     grid.attach(&bottom_box, 0, 2, 1, 1);
 
     let time       = Box::new(TimeWidget::new());
+    let battery    = Box::new(BatteryWidget::new());
     let volume     = Box::new(VolumeWidget::new(500));
     let brightness = Box::new(BrightnessWidget::new(500));
     let workspaces = Box::new(HyprlandWorkspacesWidget::new(9, 1));
@@ -121,11 +124,12 @@ async fn build_window(app: &Application, display: &gtk4::gdk::Display, monitor_i
     });
 
     time.bind_widget(&top_box);
+    battery.bind_widget(&top_box);
     workspaces.bind_widget(&middle_box);
     volume.bind_widget(&bottom_box);
     brightness.bind_widget(&bottom_box);
     
-    let widgets: Vec<Box<dyn BarWidget>> = vec![time, workspaces, volume, brightness];
+    let widgets: Vec<Box<dyn BarWidget>> = vec![time, battery, workspaces, volume, brightness];
 
     for widget in widgets {
         let events = widget.events_list();

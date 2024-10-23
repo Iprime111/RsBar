@@ -4,7 +4,9 @@ mod brightness_context;
 mod hyprland_context;
 mod time_context;
 mod rsbar_context;
+mod battery_context;
 
+use battery_context::BatteryContext;
 use brightness_context::BrightnessContext;
 use hyprland_context::HyprlandContext;
 use server_context::ServerContext;
@@ -30,6 +32,7 @@ async fn main() -> tokio::io::Result<()> {
     main_context.add_context(BrightnessContext::new());
     main_context.add_context(HyprlandContext::new());
     main_context.add_context(TimeContext::new());
+    main_context.add_context(BatteryContext::new());
 
     main_context.init().await?;
 
