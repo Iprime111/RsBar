@@ -1,5 +1,14 @@
 use crate::{bar_widget::BarWidget, unix_sockets::ChannelsData};
 use gtk4::{glib::{clone::Downgrade, MainContext}, prelude::{BoxExt, WidgetExt}};
+use log::warn;
+
+const BATTERY_ICONS: &[&str] = &[
+    "󰂎", "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"
+];
+
+const CHARGING_BATTERY_ICONS: &[&str] = &[
+    "󰢟", "󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"
+];
 
 const EVENTS_LIST: &[&str] = &[
     "battery/capacity",
@@ -35,12 +44,36 @@ impl BarWidget for BatteryWidget {
 
         MainContext::default().spawn_local(async move {
 
+            let mut current_capacity = 0;
+            let mut is_charging      = false;
+
             while let Ok(event) = channels_data.event_rx.recv().await {
-                if event.name != EVENTS_LIST[0] {
-                    continue;
+                if event.name == EVENTS_LIST[0] {
+                    match event.value.parse::<u32>() {
+                        Ok(capacity) => current_capacity = capacity,
+                        Err(_) => {
+                            warn!("Invalid battery capacity value: {}", event.value);
+                        },
+                    }
                 }
 
-                weak_label.upgrade().unwrap().set_text(&event.value);
+                if event.name == EVENTS_LIST[1] {
+                    match event.value.as_str() {
+                        "Charging" => is_charging = true,
+                        _          => is_charging = false,
+                    }
+                }
+
+                let icon_number = (current_capacity / 10) as usize;
+                let icon: &str;
+
+                if is_charging {
+                    icon = CHARGING_BATTERY_ICONS[icon_number];
+                } else {
+                    icon = BATTERY_ICONS[icon_number];
+                }
+
+                weak_label.upgrade().unwrap().set_text(icon);
             }
         });
     }

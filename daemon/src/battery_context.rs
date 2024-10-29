@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, path::PathBuf, sync::Arc};
+use std::{io::{Error, ErrorKind}, path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use log::info;
@@ -59,15 +59,7 @@ impl RsbarContextContent for BatteryContext {
         }
 
         let status_string = read_file_content(self.status_file.as_mut().unwrap()).await?;
-
-        match status_string.as_ref() {
-            "Charging"     => self.status = BatteryStatus::Charging,
-            "Discharging"  => self.status = BatteryStatus::Discharging,
-            "Full"         => self.status = BatteryStatus::Full,
-            "Not charging" => self.status = BatteryStatus::NotCharging,
-            "Unknown"      => self.status = BatteryStatus::Unknown,
-            _ => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad status value: {status_string}"))),
-        }
+        self.status = status_string.parse::<BatteryStatus>()?;
 
         self.force_events().await?;
 
@@ -93,13 +85,28 @@ impl RsbarContextContent for BatteryContext {
 }
 
 impl std::fmt::Display for BatteryStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BatteryStatus::Charging    => write!(f, "Charging"),
-            BatteryStatus::Discharging => write!(f, "Discharging"),
-            BatteryStatus::Full        => write!(f, "Full"),
-            BatteryStatus::NotCharging => write!(f, "NotCharging"),
-            BatteryStatus::Unknown     => write!(f, "Unknown"),
+            BatteryStatus::Charging    => write!(formatter, "Charging"),
+            BatteryStatus::Discharging => write!(formatter, "Discharging"),
+            BatteryStatus::Full        => write!(formatter, "Full"),
+            BatteryStatus::NotCharging => write!(formatter, "NotCharging"),
+            BatteryStatus::Unknown     => write!(formatter, "Unknown"),
+        }
+    }
+}
+
+impl std::str::FromStr for BatteryStatus {
+    type Err = Error;
+
+    fn from_str(string: &str) -> Result<Self, Self::Err> {
+        match string {
+            "Charging"     => Ok(BatteryStatus::Charging),
+            "Discharging"  => Ok(BatteryStatus::Discharging),
+            "Full"         => Ok(BatteryStatus::Full),
+            "Not charging" => Ok(BatteryStatus::NotCharging),
+            "Unknown"      => Ok(BatteryStatus::Unknown),
+            _ => Err(std::io::Error::new(ErrorKind::InvalidData, format!("Bad status value: {string}"))),
         }
     }
 }
