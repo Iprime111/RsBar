@@ -1,12 +1,11 @@
 use std::{io::ErrorKind, sync::Arc};
 
 use async_trait::async_trait;
-use chrono::{DateTime, Local, TimeDelta};
+use chrono::{DateTime, Local};
 use tokio::sync::Mutex;
 
 use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
-const TIME_PRECISION_SEC: i64 = 2;
 const TIME_FORMAT: &str = "%H\n%M";
 
 pub struct TimeContext {
@@ -26,13 +25,9 @@ impl RsbarContextContent for TimeContext {
     }
 
     async fn update(&mut self) -> tokio::io::Result<()> {
-        let now = Local::now();
+        self.time = Local::now();
 
-        if now.time() - self.time.time() >= TimeDelta::seconds(TIME_PRECISION_SEC){
-            self.time = now;
-
-            self.force_events().await?;
-        }
+        self.force_events().await?;
 
         Ok(())
     }

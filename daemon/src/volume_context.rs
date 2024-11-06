@@ -87,7 +87,7 @@ impl VolumeContext {
     fn set_volume(&mut self, args: &str) -> tokio::io::Result<()> {
         let parse_result = args.parse::<f64>();
 
-        if !parse_result.is_ok() {
+        if parse_result.is_err() {
             return Err(std::io::Error::new(ErrorKind::Other, format!("Bad volume value: {args}")));
         }
 

@@ -1024,6 +1024,7 @@ dependencies = [
  "colog",
  "log",
  "once_cell",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
