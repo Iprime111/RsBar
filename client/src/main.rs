@@ -8,7 +8,7 @@ mod tokio_runtime;
 mod unix_sockets;
 mod battery_widget;
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, process::exit};
 
 use bar_widget::BarWidget;
 use battery_widget::BatteryWidget;
@@ -55,7 +55,7 @@ fn read_css_config() -> String {
     
     if home_folder_result.is_err() {
         error!("Unable to determine home folder path");
-        panic!();
+        exit(0);
     }
 
     let full_config_path = format!("{}/{CONFIG_PATH}", home_folder_result.unwrap());
@@ -63,7 +63,7 @@ fn read_css_config() -> String {
 
     if config_content_result.is_err() {
         error!("Unable to find config in {full_config_path}");
-        panic!();
+        exit(0);
     }
 
     config_content_result.unwrap()

@@ -141,7 +141,8 @@ async fn handle_event_client(stream: UnixStream, context: Arc<Mutex<ServerContex
 
 fn bind_socket(path: impl AsRef<std::path::Path>) -> std::io::Result<UnixListener> {
     let path = path.as_ref();
-    std::fs::remove_file(path)?;
+
+    let _ = std::fs::remove_file(path);
 
     UnixListener::bind(path)
 }
