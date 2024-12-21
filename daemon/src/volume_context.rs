@@ -29,7 +29,13 @@ impl RsbarContextContent for VolumeContext {
         let output = Command::new("wpctl").arg("get-volume").arg("@DEFAULT_AUDIO_SINK@").output()?;
 
         let result_string = String::from_utf8_lossy(&output.stdout);
-        let mut sound_value_chars = result_string.split_once(' ').unwrap().1.chars();
+        let mut sound_value_chars;
+
+        match result_string.split_once(' ') {
+            Some(split) => sound_value_chars = split.1.chars(),
+            None => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad volume value: {result_string}"))),
+        }
+
         sound_value_chars.next_back();
 
         let sound_value = sound_value_chars.as_str().parse::<f64>();
