@@ -1,15 +1,17 @@
-use std::{io::ErrorKind, process::Command, sync::Arc};
+use std::{io::ErrorKind, sync::Arc};
 
 use async_trait::async_trait;
+use brightness::Brightness;
+use futures::TryStreamExt;
 use tokio::sync::Mutex;
 
 use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
-const MAX_BRIGHTNESS: f64 = 100.0;
-const MIN_BRIGHTNESS: f64 = 0.0;
+const MAX_BRIGHTNESS: u32 = 100;
+const MIN_BRIGHTNESS: u32 = 0;
 
 pub struct BrightnessContext {
-    brightness:    f64,
+    brightness:    u32,
     event_handler: Option<Arc<Mutex<EventHandler>>>,
 }
 
@@ -24,19 +26,13 @@ impl RsbarContextContent for BrightnessContext {
     }
 
     async fn update(&mut self) -> tokio::io::Result<()> {
-        let output = Command::new("brightnessctl").arg("-m").output()?;
-
-        let result_string = String::from_utf8_lossy(&output.stdout);
-        let mut brightness_value_chars = result_string.split(',').collect::<Vec<&str>>()[3].chars();
-        brightness_value_chars.next_back();
-        
-        let brightness_value = brightness_value_chars.as_str().parse::<f64>();
-        
-        match brightness_value {
-            Ok(value) => self.brightness = value / 100.0,
-            Err(_)    => self.brightness = 0.0,
+ 
+        // TODO is it correct to get a brightness value from the first device only??
+        self.brightness = match get_brightness().await {
+            Ok(value) => value,
+            Err(err) => return Err(std::io::Error::new(ErrorKind::NotFound, err)),
         };
-
+       
         self.force_events().await?;
 
         Ok(())
@@ -44,7 +40,7 @@ impl RsbarContextContent for BrightnessContext {
 
     async fn call(&mut self, procedure: &str, args: &str) -> tokio::io::Result<()> {
         match procedure {
-            "setBrightness" => self.set_brightness(args)?,
+            "setBrightness" => {self.brightness = set_brightness(args).await?},
             _ => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad procedure value for brightness context: {procedure}"))),
         };
 
@@ -68,30 +64,46 @@ impl RsbarContextContent for BrightnessContext {
 impl BrightnessContext {
     pub fn new() -> (String, RsbarContext) {
         let new_context = Box::new(BrightnessContext {
-            brightness:    0.0,
+            brightness:    0,
             event_handler: None,
         });
 
         ("brightness".to_string(), RsbarContext::new(new_context))
     }
+}
 
-    fn set_brightness(&mut self, args: &str) -> tokio::io::Result<()> {
-        let parse_result = args.parse::<f64>();
+ async fn get_brightness() -> Result<u32, brightness::Error> {
+    let brightness_device = brightness::brightness_devices().try_next().await?;
 
-        if !parse_result.is_ok() {
-            return Err(std::io::Error::new(ErrorKind::Other, format!("Bad brightness value: {args}")));
-        }
-
-        let value = parse_result.unwrap();
-
-        if value < MIN_BRIGHTNESS || value > MAX_BRIGHTNESS {
-            return Err(std::io::Error::new(ErrorKind::Other, format!("Brightness value is out of range: {args}")));
-        }
-
-        self.brightness = value;
-
-        Command::new("brightnessctl").arg("-q").arg("set").arg(format!("{}%", value * 100.0)).status()?;
-
-        Ok(())
+    match brightness_device {
+        Some(device) => Ok(device.get().await?),
+        None => Err(brightness::Error::ListingDevicesFailed(Box::new(std::io::Error::new(ErrorKind::NotFound, "Brightness device not found")))),
     }
 }
+
+async fn set_brightness(args: &str) -> tokio::io::Result<u32> {
+    let parse_result = args.parse::<u32>();
+
+    if !parse_result.is_ok() {
+        return Err(std::io::Error::new(ErrorKind::Other, format!("Bad brightness value: {args}")));
+    }
+
+    let value = parse_result.unwrap();
+
+    if value < MIN_BRIGHTNESS || value > MAX_BRIGHTNESS {
+        return Err(std::io::Error::new(ErrorKind::Other, format!("Brightness value is out of range: {args}")));
+    }
+
+    let foreach_result = brightness::brightness_devices().try_for_each(|mut device| async move {
+        device.set(value).await?;
+
+        Ok(())
+    }).await;
+
+
+    match foreach_result {
+        Ok(_) => Ok(value),
+        Err(err) => Err(std::io::Error::new(ErrorKind::Other, err)),
+    }
+}
+
