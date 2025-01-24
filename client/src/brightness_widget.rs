@@ -49,7 +49,7 @@ impl BarWidget for BrightnessWidget {
 }
 
 fn set_system_brightness(brightness: f64) -> String {
-    format!("brightness/setBrightness/{}", brightness)
+    format!("brightness/setBrightness/{}", (brightness * MAX_BRIGHTNESS) as u32)
 }
 
 fn get_system_brightness(name: &str, value: &str) -> SliderFetchResult {
@@ -64,6 +64,6 @@ fn get_system_brightness(name: &str, value: &str) -> SliderFetchResult {
         return SliderFetchResult::None;
     }
 
-    SliderFetchResult::Value(value_float.unwrap())
+    SliderFetchResult::Value(value_float.unwrap() / MAX_BRIGHTNESS)
 }
 

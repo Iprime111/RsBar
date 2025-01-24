@@ -6,11 +6,11 @@ use tokio::sync::Mutex;
 
 use crate::rsbar_context::{EventHandler, RsbarContext, RsbarContextContent};
 
-const MAX_VOLUME: f64 = 100.0;
-const MIN_VOLUME: f64 = 0.0;
+const MAX_VOLUME: u32 = 100;
+const MIN_VOLUME: u32 = 0;
 
 pub struct VolumeContext {
-    volume:        f64,
+    volume:        u32,
     is_muted:      bool,
     event_handler: Option<Arc<Mutex<EventHandler>>>,
 }
@@ -42,7 +42,7 @@ impl RsbarContextContent for VolumeContext {
 
         match sound_value {
             Ok(value) => {
-                self.volume   = value;
+                self.volume   = (value * 100.0) as u32;
                 self.is_muted = false;
             },
             Err(_) => self.is_muted = true,
@@ -82,7 +82,7 @@ impl RsbarContextContent for VolumeContext {
 impl VolumeContext {
     pub fn new() -> (String, RsbarContext) {
         let new_context = Box::new(VolumeContext {
-            volume:        0.0,
+            volume:        0,
             is_muted:      false,
             event_handler: None,
         });
@@ -91,7 +91,7 @@ impl VolumeContext {
     }
 
     fn set_volume(&mut self, args: &str) -> tokio::io::Result<()> {
-        let parse_result = args.parse::<f64>();
+        let parse_result = args.parse::<u32>();
 
         if parse_result.is_err() {
             return Err(std::io::Error::new(ErrorKind::Other, format!("Bad volume value: {args}")));
@@ -105,7 +105,7 @@ impl VolumeContext {
 
         self.volume = value;   
 
-        Command::new("wpctl").arg("set-volume").arg("@DEFAULT_AUDIO_SINK@").arg(format!("{}%", value * 100.0)).status()?;
+        Command::new("wpctl").arg("set-volume").arg("@DEFAULT_AUDIO_SINK@").arg(format!("{}%", value)).status()?;
         
         Ok(())
     }

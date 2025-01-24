@@ -118,9 +118,9 @@ Here're the tables with all of the contexts and their events and procedures:
 | context name | event name | params |
 ----------|-------|--------|
 time | time | string with the current system time value in format `HH\nMM`
-volume | volume | volume value (from `0.0` to `1.0`)
+volume | volume | volume value (integer in range `0` - `100`)
 volume | isMuted | `true` if volume is muted and `false` if not
-brightness | brightness | brightness value (from `0.0` to `1.0`)
+brightness | brightness | brightness value (integer in range `0` - `100`)
 hyprland | workspace | current workspace number (`-1` in case of error)
 
 | context name | procedure name | params |

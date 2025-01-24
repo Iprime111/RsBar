@@ -56,7 +56,7 @@ fn toggle_mute() -> String {
 }
 
 fn set_system_volume(volume: f64) -> String {
-    format!("volume/setVolume/{}", volume)
+    format!("volume/setVolume/{}", (volume * MAX_VOLUME) as u32)
 }
 
 fn get_system_volume(name: &str, value: &str) -> SliderFetchResult {
@@ -67,7 +67,7 @@ fn get_system_volume(name: &str, value: &str) -> SliderFetchResult {
             return SliderFetchResult::None;
         }
         
-        return SliderFetchResult::Value(value_float.unwrap());
+        return SliderFetchResult::Value(value_float.unwrap() / MAX_VOLUME);
     } else if name == EVENTS_LIST[1] {
         return match value {
             "false" => SliderFetchResult::On,
