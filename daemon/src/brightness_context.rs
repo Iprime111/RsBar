@@ -27,7 +27,6 @@ impl RsbarContextContent for BrightnessContext {
 
     async fn update(&mut self) -> tokio::io::Result<()> {
  
-        // TODO is it correct to get a brightness value from the first device only??
         self.brightness = match get_brightness().await {
             Ok(value) => value,
             Err(err) => return Err(std::io::Error::new(ErrorKind::NotFound, err)),
@@ -40,7 +39,12 @@ impl RsbarContextContent for BrightnessContext {
 
     async fn call(&mut self, procedure: &str, args: &str) -> tokio::io::Result<()> {
         match procedure {
-            "setBrightness" => {self.brightness = set_brightness(args).await?},
+            "setBrightness" => {
+                self.brightness = BrightnessContext::parse_brightness(args)?;
+                if let Err(err) = set_brightness(self.brightness).await {
+                    return Err(std::io::Error::new(ErrorKind::Other, format!("Unable to set the brightness value: {err}")));
+                }
+            },
             _ => return Err(std::io::Error::new(ErrorKind::NotFound, format!("Bad procedure value for brightness context: {procedure}"))),
         };
 
@@ -70,6 +74,23 @@ impl BrightnessContext {
 
         ("brightness".to_string(), RsbarContext::new(new_context))
     }
+
+    fn parse_brightness(args: &str) -> tokio::io::Result<u32> {
+
+        let parse_result = args.parse::<u32>();
+        
+        if !parse_result.is_ok() {
+            return Err(std::io::Error::new(ErrorKind::Other, format!("Bad brightness value: {args}")));
+        }
+        
+        let value = parse_result.unwrap();
+        
+        if value < MIN_BRIGHTNESS || value > MAX_BRIGHTNESS {
+            return Err(std::io::Error::new(ErrorKind::Other, format!("Brightness value is out of range: {args}")));
+        }
+
+        Ok(value)
+    }
 }
 
  async fn get_brightness() -> Result<u32, brightness::Error> {
@@ -81,29 +102,12 @@ impl BrightnessContext {
     }
 }
 
-async fn set_brightness(args: &str) -> tokio::io::Result<u32> {
-    let parse_result = args.parse::<u32>();
+async fn set_brightness(value: u32) -> Result<(), brightness::Error> {
 
-    if !parse_result.is_ok() {
-        return Err(std::io::Error::new(ErrorKind::Other, format!("Bad brightness value: {args}")));
-    }
-
-    let value = parse_result.unwrap();
-
-    if value < MIN_BRIGHTNESS || value > MAX_BRIGHTNESS {
-        return Err(std::io::Error::new(ErrorKind::Other, format!("Brightness value is out of range: {args}")));
-    }
-
-    let foreach_result = brightness::brightness_devices().try_for_each(|mut device| async move {
+    brightness::brightness_devices().try_for_each(|mut device| async move {
         device.set(value).await?;
 
         Ok(())
-    }).await;
-
-
-    match foreach_result {
-        Ok(_) => Ok(value),
-        Err(err) => Err(std::io::Error::new(ErrorKind::Other, err)),
-    }
+    }).await
 }
 
